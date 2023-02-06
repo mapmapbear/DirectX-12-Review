@@ -30,25 +30,28 @@ void D3D12HelloWindow::LoadPipeline()
 {
     UINT dxgiFactoryFlags = 0;
 
+//仅开启Debug开关的程序才使用
 #if defined(_DEBUG)
     // Enable the debug layer (requires the Graphics Tools "optional feature").
     // NOTE: Enabling the debug layer after device creation will invalidate the active device.
     {
+        //COM对象: 获取DeBug接口(ID, Ptr_Address)
+        // #define IID_PPV_ARGS(ppType) __uuidof(**(ppType)), IID_PPV_ARGS_Helper(ppType) 解引用COM指针
         ComPtr<ID3D12Debug> debugController;
         if (SUCCEEDED(D3D12GetDebugInterface(IID_PPV_ARGS(&debugController))))
         {
-            debugController->EnableDebugLayer();
+            debugController->EnableDebugLayer(); //启用调试层，发生错误时在调试器输出错误
 
-            // Enable additional debug layers.
+            // 启用额外的工厂调试模式
             dxgiFactoryFlags |= DXGI_CREATE_FACTORY_DEBUG;
         }
     }
 #endif
-
+    //创建重要DXGI对象(适配器、交换链等)
     ComPtr<IDXGIFactory4> factory;
     ThrowIfFailed(CreateDXGIFactory2(dxgiFactoryFlags, IID_PPV_ARGS(&factory)));
 
-    if (m_useWarpDevice)
+    if (m_useWarpDevice) //软件适配器
     {
         ComPtr<IDXGIAdapter> warpAdapter;
         ThrowIfFailed(factory->EnumWarpAdapter(IID_PPV_ARGS(&warpAdapter)));
@@ -59,10 +62,10 @@ void D3D12HelloWindow::LoadPipeline()
             IID_PPV_ARGS(&m_device)
             ));
     }
-    else
+    else //硬件(主显示器)
     {
         ComPtr<IDXGIAdapter1> hardwareAdapter;
-        GetHardwareAdapter(factory.Get(), &hardwareAdapter);
+        GetHardwareAdapter(factory.Get(), &hardwareAdapter); // 获取硬件适配器:从DXGI对象接口队列里面获取到硬件适配器指针
 
         ThrowIfFailed(D3D12CreateDevice(
             hardwareAdapter.Get(),
@@ -71,14 +74,15 @@ void D3D12HelloWindow::LoadPipeline()
             ));
     }
 
-    // Describe and create the command queue.
+    // 创建command指令描述符
     D3D12_COMMAND_QUEUE_DESC queueDesc = {};
-    queueDesc.Flags = D3D12_COMMAND_QUEUE_FLAG_NONE;
-    queueDesc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
+    queueDesc.Flags = D3D12_COMMAND_QUEUE_FLAG_NONE; //默认command指令队列
+    queueDesc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT; //直接执行指令 番外: TYPE_BUNDLE 打包指令集合
 
+    // 创建一个command指令队列,实际执行从队列中提出指令执行
     ThrowIfFailed(m_device->CreateCommandQueue(&queueDesc, IID_PPV_ARGS(&m_commandQueue)));
 
-    // Describe and create the swap chain.
+    // 创建离屏缓冲区描述结构
     DXGI_SWAP_CHAIN_DESC1 swapChainDesc = {};
     swapChainDesc.BufferCount = FrameCount;
     swapChainDesc.Width = m_width;
@@ -88,9 +92,10 @@ void D3D12HelloWindow::LoadPipeline()
     swapChainDesc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
     swapChainDesc.SampleDesc.Count = 1;
 
+    //创建离屏缓冲区
     ComPtr<IDXGISwapChain1> swapChain;
     ThrowIfFailed(factory->CreateSwapChainForHwnd(
-        m_commandQueue.Get(),        // Swap chain needs the queue so that it can force a flush on it.
+        m_commandQueue.Get(),        // 交换链需要队列，以便它可以强制对其进行刷新.
         Win32Application::GetHwnd(),
         &swapChainDesc,
         nullptr,
@@ -98,13 +103,13 @@ void D3D12HelloWindow::LoadPipeline()
         &swapChain
         ));
 
-    // This sample does not support fullscreen transitions.
+    // 禁用Alt + Enter 全屏
     ThrowIfFailed(factory->MakeWindowAssociation(Win32Application::GetHwnd(), DXGI_MWA_NO_ALT_ENTER));
 
-    ThrowIfFailed(swapChain.As(&m_swapChain));
-    m_frameIndex = m_swapChain->GetCurrentBackBufferIndex();
+    ThrowIfFailed(swapChain.As(&m_swapChain)); //获取离屏缓冲区指针
+    m_frameIndex = m_swapChain->GetCurrentBackBufferIndex(); //获取当前离屏缓冲区索引
 
-    // Create descriptor heaps.
+    // 创建描述符堆
     {
         // Describe and create a render target view (RTV) descriptor heap.
         D3D12_DESCRIPTOR_HEAP_DESC rtvHeapDesc = {};
