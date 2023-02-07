@@ -53,6 +53,7 @@ int Win32Application::Run(DXSample* pSample, HINSTANCE hInstance, int nCmdShow)
     // Initialize the sample. OnInit is defined in each child-implementation of DXSample.
     pSample->OnInit();
 
+    //激活窗口以当前size显示窗口
     ShowWindow(m_hwnd, nCmdShow);
 
     // Main sample loop.
@@ -62,8 +63,8 @@ int Win32Application::Run(DXSample* pSample, HINSTANCE hInstance, int nCmdShow)
         // Process any messages in the queue.
         if (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE))
         {
-            TranslateMessage(&msg);
-            DispatchMessage(&msg);
+            TranslateMessage(&msg);// 翻译虚拟键消息（UP or DOWN）
+            DispatchMessage(&msg);// 向WinProc发送消息
         }
     }
 

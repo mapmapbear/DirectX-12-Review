@@ -109,13 +109,15 @@ void D3D12HelloWindow::LoadPipeline()
     ThrowIfFailed(swapChain.As(&m_swapChain)); //获取离屏缓冲区指针
     m_frameIndex = m_swapChain->GetCurrentBackBufferIndex(); //获取当前离屏缓冲区索引
 
-    // 创建描述符堆
+
     {
-        // Describe and create a render target view (RTV) descriptor heap.
-        D3D12_DESCRIPTOR_HEAP_DESC rtvHeapDesc = {};
-        rtvHeapDesc.NumDescriptors = FrameCount;
-        rtvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
-        rtvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
+        // 初始化描述符堆
+        D3D12_DESCRIPTOR_HEAP_DESC rtvHeapDesc = {};  //创建空描述符堆
+        rtvHeapDesc.NumDescriptors = FrameCount; //堆中描述符个数
+        rtvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV; // 堆中描述符类型
+        rtvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE; //默认堆类型
+        
+        //创建描述符堆
         ThrowIfFailed(m_device->CreateDescriptorHeap(&rtvHeapDesc, IID_PPV_ARGS(&m_rtvHeap)));
 
         m_rtvDescriptorSize = m_device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
@@ -123,31 +125,32 @@ void D3D12HelloWindow::LoadPipeline()
 
     // Create frame resources.
     {
+        //获取CPU第一个描述符的句柄
         CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHandle(m_rtvHeap->GetCPUDescriptorHandleForHeapStart());
 
         // Create a RTV for each frame.
         for (UINT n = 0; n < FrameCount; n++)
         {
             ThrowIfFailed(m_swapChain->GetBuffer(n, IID_PPV_ARGS(&m_renderTargets[n])));
+            // 创建RT视图
             m_device->CreateRenderTargetView(m_renderTargets[n].Get(), nullptr, rtvHandle);
-            rtvHandle.Offset(1, m_rtvDescriptorSize);
+            rtvHandle.Offset(1, m_rtvDescriptorSize); //每次偏移20 bit
         }
     }
-
+    // Command 分配器分配内存（传入一个Alloctor对象 && obj_ptr）
     ThrowIfFailed(m_device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&m_commandAllocator)));
 }
 
 // Load the sample assets.
 void D3D12HelloWindow::LoadAssets()
 {
-    // Create the command list.
+    // 创建一个command命令列表
     ThrowIfFailed(m_device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, m_commandAllocator.Get(), nullptr, IID_PPV_ARGS(&m_commandList)));
 
-    // Command lists are created in the recording state, but there is nothing
-    // to record yet. The main loop expects it to be closed, so close it now.
+    // 命令列表在刚创建的时候是空的，需要先关闭等待稍后调用reset
     ThrowIfFailed(m_commandList->Close());
 
-    // Create synchronization objects.
+    // 创建围栏对象（同步对象）
     {
         ThrowIfFailed(m_device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&m_fence)));
         m_fenceValue = 1;
@@ -169,16 +172,16 @@ void D3D12HelloWindow::OnUpdate()
 // Render the scene.
 void D3D12HelloWindow::OnRender()
 {
-    // Record all the commands we need to render the scene into the command list.
+    // 将我们渲染场景所需的所有命令记录到命令列表中。
     PopulateCommandList();
 
-    // Execute the command list.
+    // 执行命令列表
     ID3D12CommandList* ppCommandLists[] = { m_commandList.Get() };
     m_commandQueue->ExecuteCommandLists(_countof(ppCommandLists), ppCommandLists);
 
-    // Present the frame.
+    // 离屏RT渲染到当前帧
     ThrowIfFailed(m_swapChain->Present(1, 0));
-
+    // 等待上一帧渲染完
     WaitForPreviousFrame();
 }
 
@@ -193,44 +196,41 @@ void D3D12HelloWindow::OnDestroy()
 
 void D3D12HelloWindow::PopulateCommandList()
 {
-    // Command list allocators can only be reset when the associated 
-    // command lists have finished execution on the GPU; apps should use 
-    // fences to determine GPU execution progress.
+    // 命令列表分配器只能在关联时被重置
+    // 命令列表已经在 GPU 上完成执行；
+    // 应用程序应该使用确定 GPU 执行进度的栅栏。
     ThrowIfFailed(m_commandAllocator->Reset());
 
-    // However, when ExecuteCommandList() is called on a particular command 
-    // list, that command list can then be reset at any time and must be before 
-    // re-recording.
+    // 但是，当对特定命令调用 Execute Command List() 时
+    // 列表，然后可以随时重置该命令列表，并且必须在重新录制。
     ThrowIfFailed(m_commandList->Reset(m_commandAllocator.Get(), m_pipelineState.Get()));
 
-    // Indicate that the back buffer will be used as a render target.
-    m_commandList->ResourceBarrier(1, get_rvalue_ptr(CD3DX12_RESOURCE_BARRIER::Transition(m_renderTargets[m_frameIndex].Get(), D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET)));
+    // 指示后台缓冲区从Persent状态转换为RT状态（只读 -> 可写）
+    m_commandList->ResourceBarrier(1, get_rvalue_ptr(CD3DX12_RESOURCE_BARRIER::Transition(m_renderTargets[m_frameIndex].Get(), 
+        D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET)));
 
     CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHandle(m_rtvHeap->GetCPUDescriptorHandleForHeapStart(), m_frameIndex, m_rtvDescriptorSize);
 
-    // Record commands.
-    const float clearColor[] = { 0.0f, 0.2f, 0.4f, 1.0f };
+    // 将clearColor 渲染到RT上
+    const float clearColor[] = { 0.0f, 0.2f, 0.4f, 0.6f };
     m_commandList->ClearRenderTargetView(rtvHandle, clearColor, 0, nullptr);
 
-    // Indicate that the back buffer will now be used to present.
-    m_commandList->ResourceBarrier(1, get_rvalue_ptr(CD3DX12_RESOURCE_BARRIER::Transition(m_renderTargets[m_frameIndex].Get(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT)));
+    // 指示后台缓冲区从RT装换为Persent状态（可写 -> 只读）
+    m_commandList->ResourceBarrier(1, get_rvalue_ptr(CD3DX12_RESOURCE_BARRIER::Transition(m_renderTargets[m_frameIndex].Get(), 
+        D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT)));
 
+    // 渲染活动完成后关闭command列表
     ThrowIfFailed(m_commandList->Close());
 }
 
 void D3D12HelloWindow::WaitForPreviousFrame()
 {
-    // WAITING FOR THE FRAME TO COMPLETE BEFORE CONTINUING IS NOT BEST PRACTICE.
-    // This is code implemented as such for simplicity. The D3D12HelloFrameBuffering
-    // sample illustrates how to use fences for efficient resource usage and to
-    // maximize GPU utilization.
-
-    // Signal and increment the fence value.
+    // 在command队列中插入一个围栏，更新插入围栏的fence值，围栏fence计数+1
     const UINT64 fence = m_fenceValue;
     ThrowIfFailed(m_commandQueue->Signal(m_fence.Get(), fence));
     m_fenceValue++;
 
-    // Wait until the previous frame is finished.
+    // 当前完成的围栏值 < 当前同步的围栏计数（等待完成）
     if (m_fence->GetCompletedValue() < fence)
     {
         ThrowIfFailed(m_fence->SetEventOnCompletion(fence, m_fenceEvent));
