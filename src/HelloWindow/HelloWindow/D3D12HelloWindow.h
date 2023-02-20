@@ -39,15 +39,25 @@ private:
         DirectX::XMFLOAT4 color;
     };
 
+    struct SceneConstantBuffer
+    {
+        DirectX::XMFLOAT4 offset;
+        float padding[60]; // Padding so the constant buffer is 256-byte aligned.
+    };
+    static_assert((sizeof(SceneConstantBuffer) % 256) == 0, "Constant Buffer size must be 256-byte aligned");
+
     // Pipeline objects.
     ComPtr<IDXGISwapChain3> m_swapChain;
     ComPtr<ID3D12Device> m_device;
     ComPtr<ID3D12Resource> m_renderTargets[FrameCount];
     ComPtr<ID3D12CommandAllocator> m_commandAllocator;
+    ComPtr<ID3D12CommandAllocator> m_bundleAllocator;
     ComPtr<ID3D12CommandQueue> m_commandQueue;
     ComPtr<ID3D12DescriptorHeap> m_rtvHeap;
+    ComPtr<ID3D12DescriptorHeap> m_cbvHeap;
     ComPtr<ID3D12PipelineState> m_pipelineState;
     ComPtr<ID3D12GraphicsCommandList> m_commandList;
+    ComPtr<ID3D12GraphicsCommandList> m_bundle;
     ComPtr<ID3D12RootSignature> m_rootSignature;
     UINT m_rtvDescriptorSize;
 
@@ -56,10 +66,12 @@ private:
 
     ComPtr<ID3D12Resource> m_vertexBuffer;
     D3D12_VERTEX_BUFFER_VIEW m_vertexBufferView;
+    ComPtr<ID3D12Resource> m_constantBuffer;
+    SceneConstantBuffer m_constantBufferData;
+    UINT8* m_pCbvDataBegin;
 
     // Synchronization objects.
-    // 多线程同步对象
-    UINT m_frameIndex; //帧索引
+    UINT m_frameIndex; //帧锟斤拷锟斤拷
     HANDLE m_fenceEvent;
     ComPtr<ID3D12Fence> m_fence;
     UINT64 m_fenceValue;
