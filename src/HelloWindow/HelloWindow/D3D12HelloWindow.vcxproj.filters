@@ -12,7 +12,7 @@
     <ClInclude Include="stdafx.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="D3D12HelloWindow.h">
+    <ClInclude Include="DXMainSample.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="d3dx12.h">
@@ -35,7 +35,7 @@
     <ClCompile Include="Main.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="D3D12HelloWindow.cpp">
+    <ClCompile Include="DXMainSample.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="DXSample.cpp">
@@ -44,5 +44,8 @@
     <ClCompile Include="Win32Application.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <FxCompile Include="bin\x64\Debug\shaders.hlsl" />
   </ItemGroup>
 </Project>
