@@ -117,12 +117,6 @@ void D3D12HelloWindow::LoadPipeline()
         rtvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
         ThrowIfFailed(m_device->CreateDescriptorHeap(&rtvHeapDesc, IID_PPV_ARGS(&m_rtvHeap)));
 
-        D3D12_DESCRIPTOR_HEAP_DESC cbvHeapDesc = {};
-        cbvHeapDesc.NumDescriptors = 1;
-        cbvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
-        cbvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
-        ThrowIfFailed(m_device->CreateDescriptorHeap(&cbvHeapDesc, IID_PPV_ARGS(&m_cbvHeap)));
-
         // Describe and create a shader resource view (SRV) heap for the texture.
         D3D12_DESCRIPTOR_HEAP_DESC srvHeapDesc = {};
         srvHeapDesc.NumDescriptors = 1;
@@ -131,6 +125,12 @@ void D3D12HelloWindow::LoadPipeline()
         ThrowIfFailed(m_device->CreateDescriptorHeap(&srvHeapDesc, IID_PPV_ARGS(&m_srvHeap)));
 
         m_rtvDescriptorSize = m_device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
+
+        D3D12_DESCRIPTOR_HEAP_DESC cbvHeapDesc = {};
+        cbvHeapDesc.NumDescriptors = 1;
+        cbvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+        cbvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+        ThrowIfFailed(m_device->CreateDescriptorHeap(&cbvHeapDesc, IID_PPV_ARGS(&m_cbvHeap)));
     }
 
     // Create frame resources.
@@ -463,10 +463,14 @@ void D3D12HelloWindow::PopulateCommandList()
 
     m_commandList->SetGraphicsRootSignature(m_rootSignature.Get());
 
-    ID3D12DescriptorHeap* ppHeaps[] = { m_srvHeap.Get(), m_cbvHeap.Get()};
+    ID3D12DescriptorHeap* ppHeaps[] = { m_srvHeap.Get() };
+    ID3D12DescriptorHeap* ppHeaps1[] = { m_cbvHeap.Get() };
     m_commandList->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
-    m_commandList->SetGraphicsRootDescriptorTable(1, m_cbvHeap->GetGPUDescriptorHandleForHeapStart());
     m_commandList->SetGraphicsRootDescriptorTable(0, m_srvHeap->GetGPUDescriptorHandleForHeapStart());
+
+    m_commandList->SetDescriptorHeaps(_countof(ppHeaps1), ppHeaps1);
+    m_commandList->SetGraphicsRootDescriptorTable(1, m_cbvHeap->GetGPUDescriptorHandleForHeapStart());
+
     m_commandList->RSSetViewports(1, &m_viewport);
     m_commandList->RSSetScissorRects(1, &m_scissorRect);
 
