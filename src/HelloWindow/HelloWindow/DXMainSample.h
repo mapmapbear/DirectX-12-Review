@@ -27,6 +27,7 @@ public:
 
     virtual void OnInit();
     virtual void OnUpdate();
+    void MoveToNextFrame();
     virtual void OnRender();
     virtual void OnDestroy();
 
@@ -54,7 +55,8 @@ private:
     ComPtr<IDXGISwapChain3> m_swapChain;
     ComPtr<ID3D12Device> m_device;
     ComPtr<ID3D12Resource> m_renderTargets[FrameCount];
-    ComPtr<ID3D12CommandAllocator> m_commandAllocator;
+    // ComPtr<ID3D12CommandAllocator> m_commandAllocator;// Old
+    ComPtr<ID3D12CommandAllocator> m_commandAllocators[FrameCount]; // New
     ComPtr<ID3D12CommandAllocator> m_bundleAllocator;
     ComPtr<ID3D12CommandQueue> m_commandQueue;
     ComPtr<ID3D12DescriptorHeap> m_rtvHeap;
@@ -77,12 +79,14 @@ private:
     UINT8* m_pCbvDataBegin;
 
     // Synchronization objects.
-    UINT m_frameIndex; //֡����
+    UINT m_frameIndex;
     HANDLE m_fenceEvent;
     ComPtr<ID3D12Fence> m_fence;
-    UINT64 m_fenceValue;
+    // UINT64 m_fenceValue; // Old 
+    UINT64 m_fenceValues[FrameCount]; // New
 
     void LoadPipeline();
+    void WaitForGpu();
     void LoadAssets();
     std::vector<UINT8> GenerateTextureData();
     void PopulateCommandList();

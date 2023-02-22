@@ -23,6 +23,7 @@ D3D12HelloWindow::D3D12HelloWindow(UINT width, UINT height, std::wstring name) :
 {
 }
 
+
 void D3D12HelloWindow::OnInit()
 {
     LoadPipeline();
@@ -143,10 +144,10 @@ void D3D12HelloWindow::LoadPipeline()
             ThrowIfFailed(m_swapChain->GetBuffer(n, IID_PPV_ARGS(&m_renderTargets[n])));
             m_device->CreateRenderTargetView(m_renderTargets[n].Get(), nullptr, rtvHandle);
             rtvHandle.Offset(1, m_rtvDescriptorSize);
+            ThrowIfFailed(m_device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&m_commandAllocators[n])));
         }
     }
 
-    ThrowIfFailed(m_device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&m_commandAllocator)));
     ThrowIfFailed(m_device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_BUNDLE, IID_PPV_ARGS(&m_bundleAllocator)));
 }
 
@@ -245,7 +246,7 @@ void D3D12HelloWindow::LoadAssets()
     }
 
     // Create the command list.
-    ThrowIfFailed(m_device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, m_commandAllocator.Get(), m_pipelineState.Get(), IID_PPV_ARGS(&m_commandList)));
+    ThrowIfFailed(m_device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, m_commandAllocators[m_frameIndex].Get(), m_pipelineState.Get(), IID_PPV_ARGS(&m_commandList)));
 
     // Create the vertex buffer.
     {
@@ -379,8 +380,8 @@ void D3D12HelloWindow::LoadAssets()
 
     // Create synchronization objects and wait until assets have been uploaded to the GPU.
     {
-        ThrowIfFailed(m_device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&m_fence)));
-        m_fenceValue = 1;
+        ThrowIfFailed(m_device->CreateFence(m_fenceValues[m_frameIndex], D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&m_fence)));
+        m_fenceValues[m_frameIndex]++;
 
         // Create an event handle to use for frame synchronization.
         m_fenceEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
@@ -392,7 +393,8 @@ void D3D12HelloWindow::LoadAssets()
         // Wait for the command list to execute; we are reusing the same command 
         // list in our main loop but for now, we just want to wait for setup to 
         // complete before continuing.
-        WaitForPreviousFrame();
+        // WaitForPreviousFrame();
+        WaitForGpu();
     }
 }
 
@@ -456,21 +458,22 @@ void D3D12HelloWindow::OnRender()
 
     ThrowIfFailed(m_swapChain->Present(1, 0));
 
-    WaitForPreviousFrame();
+    // WaitForPreviousFrame(); // Old
+    MoveToNextFrame();
 }
 
 void D3D12HelloWindow::OnDestroy()
 {
-    WaitForPreviousFrame();
-
+    // WaitForPreviousFrame(); //Old
+    WaitForGpu();
     CloseHandle(m_fenceEvent);
 }
 
 void D3D12HelloWindow::PopulateCommandList()
 {
-    ThrowIfFailed(m_commandAllocator->Reset());
+    ThrowIfFailed(m_commandAllocators[m_frameIndex]->Reset());
 
-    ThrowIfFailed(m_commandList->Reset(m_commandAllocator.Get(), m_pipelineState.Get()));
+    ThrowIfFailed(m_commandList->Reset(m_commandAllocators[m_frameIndex].Get(), m_pipelineState.Get()));
 
     m_commandList->SetGraphicsRootSignature(m_rootSignature.Get());
 
@@ -502,17 +505,40 @@ void D3D12HelloWindow::PopulateCommandList()
     ThrowIfFailed(m_commandList->Close());
 }
 
-void D3D12HelloWindow::WaitForPreviousFrame()
+// void D3D12HelloWindow::WaitForPreviousFrame()
+// {
+//     const UINT64 fence = m_fenceValue;
+//     ThrowIfFailed(m_commandQueue->Signal(m_fence.Get(), fence));
+//     m_fenceValue++;
+//
+//     if (m_fence->GetCompletedValue() < fence)
+//     {
+//         ThrowIfFailed(m_fence->SetEventOnCompletion(fence, m_fenceEvent));
+//         WaitForSingleObject(m_fenceEvent, INFINITE);
+//     }
+//
+//     m_frameIndex = m_swapChain->GetCurrentBackBufferIndex();
+// }
+void D3D12HelloWindow::WaitForGpu()
 {
-    const UINT64 fence = m_fenceValue;
-    ThrowIfFailed(m_commandQueue->Signal(m_fence.Get(), fence));
-    m_fenceValue++;
+    ThrowIfFailed(m_commandQueue->Signal(m_fence.Get(), m_fenceValues[m_frameIndex]));
 
-    if (m_fence->GetCompletedValue() < fence)
-    {
-        ThrowIfFailed(m_fence->SetEventOnCompletion(fence, m_fenceEvent));
-        WaitForSingleObject(m_fenceEvent, INFINITE);
-    }
+    ThrowIfFailed(m_fence->SetEventOnCompletion(m_fenceValues[m_frameIndex], m_fenceEvent));
+    WaitForSingleObjectEx(m_fenceEvent, INFINITE, FALSE);
+
+    m_fenceValues[m_frameIndex]++;
+}
+
+void D3D12HelloWindow::MoveToNextFrame()
+{
+    const UINT64 currentFenceValue = m_fenceValues[m_frameIndex];
+    ThrowIfFailed(m_commandQueue->Signal(m_fence.Get(), currentFenceValue));
 
     m_frameIndex = m_swapChain->GetCurrentBackBufferIndex();
+    if(m_fence->GetCompletedValue() < m_fenceValues[m_frameIndex])
+    {
+        ThrowIfFailed(m_fence->SetEventOnCompletion(m_fenceValues[m_frameIndex], m_fenceEvent));
+        WaitForSingleObjectEx(m_fenceEvent, INFINITE, FALSE);
+    }
+    m_fenceValues[m_frameIndex] = currentFenceValue + 1;
 }
