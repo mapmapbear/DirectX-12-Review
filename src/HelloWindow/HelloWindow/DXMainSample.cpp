@@ -14,12 +14,12 @@
 
 D3D12HelloWindow::D3D12HelloWindow(UINT width, UINT height, std::wstring name) :
     DXSample(width, height, name),
-    m_frameIndex(0),
-	m_pCbvDataBegin(nullptr),
+    m_rtvDescriptorSize(0),
     m_viewport(0.0f, 0.0f, static_cast<float>(width), static_cast<float>(height)),
     m_scissorRect(0, 0, static_cast<LONG>(width), static_cast<LONG>(height)),
-    m_rtvDescriptorSize(0),
-    m_constantBufferData{}
+    m_constantBufferData{},
+    m_pCbvDataBegin(nullptr),
+    m_frameIndex(0)
 {
 }
 
@@ -253,7 +253,8 @@ void D3D12HelloWindow::LoadAssets()
         // Define the geometry for a triangle.
         Vertex triangleVertices[] =
         {
-            { { 0.0f, 0.25f * m_aspectRatio, 0.0f }, { 0.5f, 0.0f } },
+            { { -0.25f, 0.25f * m_aspectRatio, 0.0f }, { 0.0f, 0.0f } },
+            { { 0.25f, 0.25f * m_aspectRatio, 0.0f }, { 1.0f, 0.0f } },
             { { 0.25f, -0.25f * m_aspectRatio, 0.0f }, { 1.0f, 1.0f } },
             { { -0.25f, -0.25f * m_aspectRatio, 0.0f }, { 0.0f, 1.0f } }
         };
@@ -283,6 +284,31 @@ void D3D12HelloWindow::LoadAssets()
         m_vertexBufferView.BufferLocation = m_vertexBuffer->GetGPUVirtualAddress();
         m_vertexBufferView.StrideInBytes = sizeof(Vertex);
         m_vertexBufferView.SizeInBytes = vertexBufferSize;
+
+        UINT16 triangleIndexes[]
+        {
+            0, 1, 2,
+            0, 2, 3
+        };
+        const UINT indexBufferSize = sizeof(triangleIndexes);
+
+        ThrowIfFailed(m_device->CreateCommittedResource(
+            get_rvalue_ptr(CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD)),
+            D3D12_HEAP_FLAG_NONE,
+            get_rvalue_ptr(CD3DX12_RESOURCE_DESC::Buffer(indexBufferSize)),
+            D3D12_RESOURCE_STATE_GENERIC_READ,
+            nullptr,
+            IID_PPV_ARGS(&m_indexBuffer)));
+
+        // Copy the cube data to the vertex buffer.
+        ThrowIfFailed(m_indexBuffer->Map(0, &readRange, reinterpret_cast<void**>(&pVertexDataBegin)));
+        memcpy(pVertexDataBegin, triangleIndexes, sizeof(triangleIndexes));
+        m_indexBuffer->Unmap(0, nullptr);
+
+        // Initialize the vertex buffer view.
+        m_indexBufferView.BufferLocation = m_indexBuffer->GetGPUVirtualAddress();
+        m_indexBufferView.Format = DXGI_FORMAT_R16_UINT;
+        m_indexBufferView.SizeInBytes = indexBufferSize;
     }
 
     {
@@ -374,7 +400,9 @@ void D3D12HelloWindow::LoadAssets()
         m_bundle->SetGraphicsRootSignature(m_rootSignature.Get());
         m_bundle->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
         m_bundle->IASetVertexBuffers(0, 1, &m_vertexBufferView);
-        m_bundle->DrawInstanced(3, 1, 0, 0);
+        m_bundle->IASetIndexBuffer(&m_indexBufferView);
+        // m_bundle->DrawInstanced(3, 1, 0, 0);
+        m_bundle->DrawIndexedInstanced(6, 1, 0, 0, 0);
         ThrowIfFailed(m_bundle->Close());
     }
 

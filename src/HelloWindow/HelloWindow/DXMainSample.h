@@ -41,7 +41,7 @@ private:
     {
 	    DirectX::XMFLOAT3 position;
         DirectX::XMFLOAT2 uv;
-        DirectX::XMFLOAT4 color;
+        // DirectX::XMFLOAT4 color;
     };
 
     struct SceneConstantBuffer
@@ -72,7 +72,9 @@ private:
     CD3DX12_RECT m_scissorRect;
 
     ComPtr<ID3D12Resource> m_vertexBuffer;
+    ComPtr<ID3D12Resource> m_indexBuffer;
     D3D12_VERTEX_BUFFER_VIEW m_vertexBufferView;
+    D3D12_INDEX_BUFFER_VIEW m_indexBufferView;
     ComPtr<ID3D12Resource> m_constantBuffer;
     ComPtr<ID3D12Resource> m_texture;
     SceneConstantBuffer m_constantBufferData;
