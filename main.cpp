@@ -22,6 +22,8 @@ public:
 	GameApp(HINSTANCE hInstance);
 	~GameApp();
 
+	// void BuildMaterials();
+
 	virtual bool Initialize()override;
 
 private:
@@ -61,6 +63,7 @@ private:
 	float mRadius = 5.0f;
 	POINT mLastMousePos;
 	ImVec4 ccolor;
+	std::unordered_map<std::string, std::unique_ptr<Material>> mMaterials;
 };
 
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE prevInstance,
@@ -95,6 +98,19 @@ GameApp::~GameApp()
 {
 }
 
+// void GameApp::BuildMaterials()
+// {
+// 	auto bricks0 = std::make_unique<Material>();
+// 	bricks0->Name = "bricks0";
+// 	bricks0->MatCBIndex = 0;
+// 	bricks0->DiffuseSrvHeapIndex = 0;
+// 	bricks0->DiffuseAlbedo = XMFLOAT4(Colors::ForestGreen);
+// 	bricks0->FresnelR0 = XMFLOAT3(0.02f, 0.02f, 0.02f);
+// 	bricks0->Roughness = 0.1f;
+//
+// 	mMaterials["bricks0"] = std::move(bricks0);
+// }
+
 bool GameApp::Initialize()
 {
 	if (!D3DApp::Initialize())
@@ -106,6 +122,7 @@ bool GameApp::Initialize()
 	BuildShadersAndInputLayout();
 	BuildBoxGeometry();
 	BuildPSO();
+	//BuildMaterials();
 
 	ThrowIfFailed(mCommandList->Close());
 	ID3D12CommandList* cmdLists[] = { mCommandList.Get() };
@@ -396,8 +413,8 @@ void GameApp::BuildShadersAndInputLayout()
 {
 	HRESULT hr = S_OK;
 
-	mvsByteCode = d3dUtil::CompileShader(L"Shaders\\color.hlsl", nullptr, "VS", "vs_5_0");
-	mpsByteCode = d3dUtil::CompileShader(L"Shaders\\color.hlsl", nullptr, "PS", "ps_5_0");
+	mvsByteCode = d3dUtil::CompileShader(L"Shaders\\color.hlsl", nullptr, "VS", "vs_5_1");
+	mpsByteCode = d3dUtil::CompileShader(L"Shaders\\color.hlsl", nullptr, "PS", "ps_5_1");
 
 	mInputLayout =
 	{
