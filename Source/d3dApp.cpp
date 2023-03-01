@@ -1,6 +1,9 @@
 #include "d3dApp.h"
 #include <WindowsX.h>
 
+
+extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
+
 using Microsoft::WRL::ComPtr;
 using namespace std;
 using namespace DirectX;
@@ -87,6 +90,11 @@ int D3DApp::Run()
 			if( !mAppPaused )
 			{
 				CalculateFrameStats();
+				// 这里添加
+				ImGui_ImplDX12_NewFrame();
+				ImGui_ImplWin32_NewFrame();
+				ImGui::NewFrame();
+				// --------
 				Update(mTimer);	
                 Draw(mTimer);
 			}
@@ -106,6 +114,9 @@ bool D3DApp::Initialize()
 		return false;
 
 	if(!InitDirect3D())
+		return false;
+
+	if (!InitImGui())
 		return false;
 
     // Do the initial resize code.
@@ -132,6 +143,12 @@ void D3DApp::CreateRtvAndDsvDescriptorHeaps()
 	dsvHeapDesc.NodeMask = 0;
     ThrowIfFailed(md3dDevice->CreateDescriptorHeap(
         &dsvHeapDesc, IID_PPV_ARGS(mDsvHeap.GetAddressOf())));
+
+	D3D12_DESCRIPTOR_HEAP_DESC imguiDesc = {};
+	imguiDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+	imguiDesc.NumDescriptors = 1;
+	imguiDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+	ThrowIfFailed(md3dDevice->CreateDescriptorHeap(&imguiDesc, IID_PPV_ARGS(mImguiHeap.GetAddressOf())));
 }
 
 void D3DApp::OnResize()
@@ -233,6 +250,8 @@ void D3DApp::OnResize()
  
 LRESULT D3DApp::MsgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
+	if (ImGui_ImplWin32_WndProcHandler(mhMainWnd, msg, wParam, lParam))
+		return true;
 	switch( msg )
 	{
 	// WM_ACTIVATE is sent when the window is activated or deactivated.  
@@ -474,6 +493,26 @@ bool D3DApp::InitDirect3D()
 	return true;
 }
 
+bool D3DApp::InitImGui()
+{
+	IMGUI_CHECKVERSION();
+	ImGui::CreateContext();
+	ImGuiIO& io = ImGui::GetIO();
+	io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;     // 允许键盘控制
+	io.ConfigWindowsMoveFromTitleBarOnly = true;              // 仅允许标题拖动
+
+	// 设置Dear ImGui风格
+	ImGui::StyleColorsDark();
+
+	// 设置平台/渲染器后端
+	ImGui_ImplWin32_Init(mhMainWnd);
+	ImGui_ImplDX12_Init(md3dDevice.Get(), mCurrentFence, DXGI_FORMAT_R8G8B8A8_UNORM, 
+		mImguiHeap.Get(), mImguiHeap->GetCPUDescriptorHandleForHeapStart(), mImguiHeap->GetGPUDescriptorHandleForHeapStart());
+
+	return true;
+
+}
+
 void D3DApp::CreateCommandObjects()
 {
 	D3D12_COMMAND_QUEUE_DESC queueDesc = {};
@@ -675,3 +714,4 @@ void D3DApp::LogOutputDisplayModes(IDXGIOutput* output, DXGI_FORMAT format)
         ::OutputDebugString(text.c_str());
     }
 }
+

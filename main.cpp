@@ -14,11 +14,11 @@ struct ObjectConstants
 {
 	XMFLOAT4X4 WorldViewProj = MathHelper::Identity4x4();
 };
-class InitDirect3DApp : public D3DApp
+class GameApp : public D3DApp
 {
 public:
-	InitDirect3DApp(HINSTANCE hInstance);
-	~InitDirect3DApp();
+	GameApp(HINSTANCE hInstance);
+	~GameApp();
 
 	virtual bool Initialize()override;
 
@@ -70,7 +70,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE prevInstance,
 
 	try
 	{
-		InitDirect3DApp theApp(hInstance);
+		GameApp theApp(hInstance);
 		if (!theApp.Initialize())
 			return 0;
 
@@ -83,16 +83,16 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE prevInstance,
 	}
 }
 
-InitDirect3DApp::InitDirect3DApp(HINSTANCE hInstance)
+GameApp::GameApp(HINSTANCE hInstance)
 	: D3DApp(hInstance)
 {
 }
 
-InitDirect3DApp::~InitDirect3DApp()
+GameApp::~GameApp()
 {
 }
 
-bool InitDirect3DApp::Initialize()
+bool GameApp::Initialize()
 {
 	if (!D3DApp::Initialize())
 		return false;
@@ -112,14 +112,14 @@ bool InitDirect3DApp::Initialize()
 	return true;
 }
 
-void InitDirect3DApp::OnResize()
+void GameApp::OnResize()
 {
 	D3DApp::OnResize();
 	XMMATRIX p = XMMatrixPerspectiveFovLH(0.25f * MathHelper::Pi, AspectRatio(), 1.0, 1000.0f);
 	XMStoreFloat4x4(&mProj, p);
 }
 
-void InitDirect3DApp::Update(const GameTimer& gt)
+void GameApp::Update(const GameTimer& gt)
 {
 	float x = mRadius * sin(mPhi) * cos(mTheta);
 	float z = mRadius * sin(mPhi) * sin(mTheta);
@@ -138,9 +138,14 @@ void InitDirect3DApp::Update(const GameTimer& gt)
 	ObjectConstants objConstants;
 	XMStoreFloat4x4(&objConstants.WorldViewProj, XMMatrixTranspose(worldViewProj));
 	mObjectCB->CopyData(0, objConstants);
+
+	// ImGui内部示例窗口
+	ImGui::ShowAboutWindow();
+	ImGui::ShowDemoWindow();
+	ImGui::ShowUserGuide();
 }
 
-void InitDirect3DApp::Draw(const GameTimer& gt)
+void GameApp::Draw(const GameTimer& gt)
 {
 	// Reuse the memory associated with command recording.
 	// We can only reset when the associated command lists have finished execution on the GPU.
@@ -190,6 +195,8 @@ void InitDirect3DApp::Draw(const GameTimer& gt)
 	ID3D12CommandList* cmdsLists[] = { mCommandList.Get() };
 	mCommandQueue->ExecuteCommandLists(_countof(cmdsLists), cmdsLists);
 
+	ImGui::Render();
+	ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), mCommandList.Get());
 	// swap the back and front buffers
 	ThrowIfFailed(mSwapChain->Present(0, 0));
 	mCurrBackBuffer = (mCurrBackBuffer + 1) % SwapChainBufferCount;
@@ -200,7 +207,7 @@ void InitDirect3DApp::Draw(const GameTimer& gt)
 	FlushCommandQueue();
 }
 
-void InitDirect3DApp::OnMouseDown(WPARAM btnState, int x, int y)
+void GameApp::OnMouseDown(WPARAM btnState, int x, int y)
 {
 	mLastMousePos.x = x;
 	mLastMousePos.y = y;
@@ -208,12 +215,12 @@ void InitDirect3DApp::OnMouseDown(WPARAM btnState, int x, int y)
 	SetCapture(mhMainWnd);
 }
 
-void InitDirect3DApp::OnMouseUp(WPARAM btnState, int x, int y)
+void GameApp::OnMouseUp(WPARAM btnState, int x, int y)
 {
 	ReleaseCapture();
 }
 
-void InitDirect3DApp::OnMouseMove(WPARAM btnState, int x, int y)
+void GameApp::OnMouseMove(WPARAM btnState, int x, int y)
 {
 	if ((btnState & MK_LBUTTON) != 0)
 	{
@@ -245,7 +252,7 @@ void InitDirect3DApp::OnMouseMove(WPARAM btnState, int x, int y)
 	mLastMousePos.y = y;
 }
 
-void InitDirect3DApp::BuildDescriptorHeaps()
+void GameApp::BuildDescriptorHeaps()
 {
 	D3D12_DESCRIPTOR_HEAP_DESC cbvHeapDesc;
 	cbvHeapDesc.NumDescriptors = 1;
@@ -256,7 +263,7 @@ void InitDirect3DApp::BuildDescriptorHeaps()
 		IID_PPV_ARGS(&mCbvHeap)));
 }
 
-void InitDirect3DApp::BuildConstantBuffers()
+void GameApp::BuildConstantBuffers()
 {
 	mObjectCB = std::make_unique<UploadBuffer<ObjectConstants>>(md3dDevice.Get(), 1, true);
 
@@ -276,7 +283,7 @@ void InitDirect3DApp::BuildConstantBuffers()
 		mCbvHeap->GetCPUDescriptorHandleForHeapStart());
 }
 
-void InitDirect3DApp::BuildRootSignature()
+void GameApp::BuildRootSignature()
 {
 	// Shader programs typically require resources as input (constant buffers,
 	// textures, samplers).  The root signature defines the resources the shader
@@ -315,7 +322,7 @@ void InitDirect3DApp::BuildRootSignature()
 		IID_PPV_ARGS(&mRootSignature)));
 }
 
-void InitDirect3DApp::BuildShadersAndInputLayout()
+void GameApp::BuildShadersAndInputLayout()
 {
 	HRESULT hr = S_OK;
 
@@ -329,7 +336,7 @@ void InitDirect3DApp::BuildShadersAndInputLayout()
 	};
 }
 
-void InitDirect3DApp::BuildBoxGeometry()
+void GameApp::BuildBoxGeometry()
 {
 	std::array<Vertex, 8> vertices =
 	{
@@ -401,7 +408,7 @@ void InitDirect3DApp::BuildBoxGeometry()
 	mBoxGeo->DrawArgs["box"] = submesh;
 }
 
-void InitDirect3DApp::BuildPSO()
+void GameApp::BuildPSO()
 {
 	D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc;
 	ZeroMemory(&psoDesc, sizeof(D3D12_GRAPHICS_PIPELINE_STATE_DESC));

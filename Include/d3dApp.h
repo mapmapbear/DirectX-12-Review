@@ -11,6 +11,9 @@
 
 #include "d3dUtil.h"
 #include "GameTimer.h"
+#include "imgui/imgui.h"
+#include "imgui/imgui_impl_dx12.h"
+#include "imgui/imgui_impl_win32.h"
 
 // Link necessary d3d12 libraries.
 // #pragma comment(lib,"d3dcompiler.lib")
@@ -56,6 +59,7 @@ protected:
 protected:
 
 	bool InitMainWindow();
+	bool InitImGui();
 	bool InitDirect3D();
 	void CreateCommandObjects();
 	void CreateSwapChain();
@@ -95,6 +99,7 @@ protected:
 	Microsoft::WRL::ComPtr<IDXGISwapChain> mSwapChain;
 	Microsoft::WRL::ComPtr<ID3D12Device> md3dDevice;
 
+
 	Microsoft::WRL::ComPtr<ID3D12Fence> mFence;
 	UINT64 mCurrentFence = 0;
 	
@@ -109,6 +114,8 @@ protected:
 
 	Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> mRtvHeap;
 	Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> mDsvHeap;
+	Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> mImguiHeap;
+
 
 	D3D12_VIEWPORT mScreenViewport; 
 	D3D12_RECT mScissorRect;
