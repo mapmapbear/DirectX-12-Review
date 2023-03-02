@@ -138,11 +138,6 @@ void GameApp::Update(const GameTimer& gt)
 	ObjectConstants objConstants;
 	XMStoreFloat4x4(&objConstants.WorldViewProj, XMMatrixTranspose(worldViewProj));
 	mObjectCB->CopyData(0, objConstants);
-
-	// ImGui内部示例窗口
-	ImGui::ShowAboutWindow();
-	ImGui::ShowDemoWindow();
-	ImGui::ShowUserGuide();
 }
 
 void GameApp::Draw(const GameTimer& gt)
@@ -154,6 +149,14 @@ void GameApp::Draw(const GameTimer& gt)
 	// A command list can be reset after it has been added to the command queue via ExecuteCommandList.
 	// Reusing the command list reuses memory.
 	ThrowIfFailed(mCommandList->Reset(mDirectCmdListAlloc.Get(), mPSO.Get()));
+
+	ImGui_ImplDX12_NewFrame();
+	ImGui_ImplWin32_NewFrame();
+	ImGui::NewFrame();
+
+	bool show_demo_window = true;
+	ImGui::ShowDemoWindow(&show_demo_window);
+	ImGui::Render();
 
 	mCommandList->RSSetViewports(1, &mScreenViewport);
 	mCommandList->RSSetScissorRects(1, &mScissorRect);
@@ -183,6 +186,8 @@ void GameApp::Draw(const GameTimer& gt)
 	mCommandList->DrawIndexedInstanced(
 		mBoxGeo->DrawArgs["box"].IndexCount,
 		1, 0, 0, 0);
+	mCommandList->SetDescriptorHeaps(1, mImguiHeap.GetAddressOf());
+	ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), mCommandList.Get());
 
 	// Indicate a state transition on the resource usage.
 	mCommandList->ResourceBarrier(1, get_rvalue_ptr(CD3DX12_RESOURCE_BARRIER::Transition(CurrentBackBuffer(),
@@ -194,9 +199,6 @@ void GameApp::Draw(const GameTimer& gt)
 	// Add the command list to the queue for execution.
 	ID3D12CommandList* cmdsLists[] = { mCommandList.Get() };
 	mCommandQueue->ExecuteCommandLists(_countof(cmdsLists), cmdsLists);
-
-	ImGui::Render();
-	ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), mCommandList.Get());
 	// swap the back and front buffers
 	ThrowIfFailed(mSwapChain->Present(0, 0));
 	mCurrBackBuffer = (mCurrBackBuffer + 1) % SwapChainBufferCount;
