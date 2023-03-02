@@ -6,7 +6,9 @@
 
 cbuffer cbPerObject : register(b0)
 {
-	float4x4 gWorldViewProj; 
+	float4x4 gWorldViewProj;
+	vector g_Color;
+	uint g_UseCustomColor;
 };
 
 struct VertexIn
@@ -36,7 +38,7 @@ VertexOut VS(VertexIn vin)
 
 float4 PS(VertexOut pin) : SV_Target
 {
-    return pin.Color;
+	return g_UseCustomColor ? float4(1.0, 0.0, 0.0, 1.0) : pin.Color;
 }
 
 

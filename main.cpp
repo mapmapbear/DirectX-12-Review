@@ -13,6 +13,8 @@ struct Vertex
 struct ObjectConstants
 {
 	XMFLOAT4X4 WorldViewProj = MathHelper::Identity4x4();
+	DirectX::XMFLOAT4 color;
+	uint32_t useCustomColor;
 };
 class GameApp : public D3DApp
 {
@@ -153,9 +155,78 @@ void GameApp::Draw(const GameTimer& gt)
 	ImGui_ImplDX12_NewFrame();
 	ImGui_ImplWin32_NewFrame();
 	ImGui::NewFrame();
+	float col[4];
+
+	{
+		static float tx = 0.0f, ty = 0.0f, phi = 0.0f, theta = 0.0f, scale = 1.0f, fov = XM_PIDIV2;
+		float dt = gt.DeltaTime();
+		static bool animateCube = true, customColor = false;
+		ObjectConstants objConstants;
+		if (animateCube)
+		{
+			phi += 0.3f * dt, theta += 0.37f * dt;
+			phi = XMScalarModAngle(phi);
+			theta = XMScalarModAngle(theta);
+		}
+		if (ImGui::Begin("Use ImGui"))
+		{
+			ImGui::Checkbox("Animate Cube", &animateCube);   // 复选框
+			ImGui::SameLine(0.0f, 25.0f);                    // 下一个控件在同一行往右25像素单位
+			if (ImGui::Button("Reset Params"))               // 按钮
+			{
+				tx = ty = phi = theta = 0.0f;
+				scale = 1.0f;
+				fov = XM_PIDIV2;
+			}
+			ImGui::SliderFloat("Scale", &scale, 0.2f, 2.0f);  // 拖动控制物体大小
+
+			ImGui::Text("Phi: %.2f degrees", XMConvertToDegrees(phi));     // 显示文字，用于描述下面的控件 
+			ImGui::SliderFloat("##1", &phi, -XM_PI, XM_PI, "");            // 不显示控件标题，但使用##来避免标签重复
+			// 空字符串避免显示数字
+			ImGui::Text("Theta: %.2f degrees", XMConvertToDegrees(theta));
+			// 另一种写法是ImGui::PushID(2);
+			// 把里面的##2删去
+			ImGui::SliderFloat("##2", &theta, -XM_PI, XM_PI, "");
+			// 然后加上ImGui::PopID(2);
+
+			ImGui::Text("Position: (%.1f, %.1f, 0.0)", tx, ty);
+
+			ImGui::Text("FOV: %.2f degrees", XMConvertToDegrees(fov));
+			ImGui::SliderFloat("##3", &fov, XM_PIDIV4, XM_PI / 3 * 2, "");
+
+			if (ImGui::Checkbox("Use Custom Color", &customColor))
+			{
+				objConstants.useCustomColor = static_cast<uint32_t>(customColor);
+			}
+			// 下面的控件受上面的复选框影响
+			if (customColor)
+			{
+				ImGui::ColorEdit3("Color", reinterpret_cast<float*>(&objConstants.color));  // 编辑颜色
+			}
+			// std::wstring str = std::to_wstring(customColor) + L"\n";
+			std::wstring str = std::to_wstring(objConstants.useCustomColor) + L"\n";
+			::OutputDebugString(str.c_str());
+		}
+		ImGui::End();
+
+		{
+			XMMATRIX world = 
+				XMMatrixScalingFromVector(XMVectorReplicate(scale)) * 
+		        XMMatrixRotationX(phi) * XMMatrixRotationY(theta) * 
+				XMMatrixTranslation(tx, ty, 0.0f);
+			XMMATRIX proj = XMMatrixPerspectiveFovLH(fov, AspectRatio(), 1.0f, 1000.0f);
+			XMStoreFloat4x4(&mWorld, world);
+			XMStoreFloat4x4(&mProj, proj);
+			XMMATRIX view = XMLoadFloat4x4(&mView);
+			XMMATRIX mvp = world * view * proj;
+			objConstants.color = XMFLOAT4(1.0, 0.0, 0.0, 1.0);
+			XMStoreFloat4x4(&objConstants.WorldViewProj, XMMatrixTranspose(mvp));
+			mObjectCB->CopyData(0, objConstants);
+		}
+	}
 
 	bool show_demo_window = true;
-	ImGui::ShowDemoWindow(&show_demo_window);
+	// ImGui::ShowDemoWindow(&show_demo_window);
 	ImGui::Render();
 
 	mCommandList->RSSetViewports(1, &mScreenViewport);

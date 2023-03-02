@@ -87,4 +87,17 @@
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
+  <ItemGroup>
+    <FxCompile Include="Shaders\color.hlsl">
+      <Filter>Shaders</Filter>
+    </FxCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="Shaders\color_ps.cso">
+      <Filter>Shaders</Filter>
+    </None>
+    <None Include="Shaders\color_vs.cso">
+      <Filter>Shaders</Filter>
+    </None>
+  </ItemGroup>
 </Project>
