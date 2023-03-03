@@ -8,6 +8,7 @@ using Microsoft::WRL::ComPtr;
 using namespace std;
 using namespace DirectX;
 
+
 LRESULT CALLBACK
 MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
@@ -32,9 +33,6 @@ D3DApp::D3DApp(HINSTANCE hInstance)
 
 D3DApp::~D3DApp()
 {
-	ImGui_ImplDX12_Shutdown();
-	ImGui_ImplWin32_Shutdown();
-	ImGui::DestroyContext();
 	if(md3dDevice != nullptr)
 		FlushCommandQueue();
 }
@@ -112,9 +110,6 @@ bool D3DApp::Initialize()
 		return false;
 
 	if(!InitDirect3D())
-		return false;
-
-	if (!InitImGui())
 		return false;
 
 	// Do the initial resize code.
@@ -246,6 +241,7 @@ LRESULT D3DApp::MsgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
 	if (ImGui_ImplWin32_WndProcHandler(mhMainWnd, msg, wParam, lParam))
 		return true;
+	const ImGuiIO imio = ImGui::GetIO();
 	switch( msg )
 	{
 	// WM_ACTIVATE is sent when the window is activated or deactivated.  
@@ -365,6 +361,7 @@ LRESULT D3DApp::MsgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 		OnMouseUp(wParam, GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam));
 		return 0;
 	case WM_MOUSEMOVE:
+		if (imio.WantCaptureMouse) break;
 		OnMouseMove(wParam, GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam));
 		return 0;
 	case WM_KEYUP:
@@ -417,7 +414,7 @@ bool D3DApp::InitMainWindow()
 
 	ShowWindow(mhMainWnd, SW_SHOW);
 	UpdateWindow(mhMainWnd);
-
+	ImGui_ImplWin32_Init(mhMainWnd);
 	return true;
 }
 
@@ -484,25 +481,15 @@ bool D3DApp::InitDirect3D()
 	CreateSwapChain();
 	CreateRtvAndDsvDescriptorHeaps();
 
-	return true;
-}
-
-bool D3DApp::InitImGui()
-{
+	// Create ImGui DescHeap
 	D3D12_DESCRIPTOR_HEAP_DESC imguiDesc = {};
 	imguiDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
 	imguiDesc.NumDescriptors = 1;
 	imguiDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
 	ThrowIfFailed(md3dDevice->CreateDescriptorHeap(&imguiDesc, IID_PPV_ARGS(mImguiHeap.GetAddressOf())));
 
-	IMGUI_CHECKVERSION();
-	ImGui::CreateContext();
-	ImGuiIO& io = ImGui::GetIO(); (void)io;
-	// io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
-	// io.ConfigWindowsMoveFromTitleBarOnly = true;
-	ImGui_ImplWin32_Init(mhMainWnd);
-	ImGui_ImplDX12_Init(md3dDevice.Get(), 3, DXGI_FORMAT_R8G8B8A8_UNORM, 
-		mImguiHeap.Get(), mImguiHeap->GetCPUDescriptorHandleForHeapStart(), mImguiHeap->GetGPUDescriptorHandleForHeapStart());
+	ImGui_ImplDX12_Init(md3dDevice.Get(), SwapChainBufferCount, mBackBufferFormat, mImguiHeap.Get(),
+		mImguiHeap.Get()->GetCPUDescriptorHandleForHeapStart(), mImguiHeap.Get()->GetGPUDescriptorHandleForHeapStart());
 	return true;
 }
 

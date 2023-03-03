@@ -60,6 +60,7 @@ private:
 	float mPhi = XM_PIDIV4;
 	float mRadius = 5.0f;
 	POINT mLastMousePos;
+	ImVec4 ccolor;
 };
 
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE prevInstance,
@@ -155,8 +156,8 @@ void GameApp::Draw(const GameTimer& gt)
 	ImGui_ImplDX12_NewFrame();
 	ImGui_ImplWin32_NewFrame();
 	ImGui::NewFrame();
-	float col[4];
-
+	
+	XMVECTORF32 clearColor = Colors::LightSteelBlue;
 	{
 		static float tx = 0.0f, ty = 0.0f, phi = 0.0f, theta = 0.0f, scale = 1.0f, fov = XM_PIDIV2;
 		float dt = gt.DeltaTime();
@@ -170,24 +171,20 @@ void GameApp::Draw(const GameTimer& gt)
 		}
 		if (ImGui::Begin("Use ImGui"))
 		{
-			ImGui::Checkbox("Animate Cube", &animateCube);   // 复选框
-			ImGui::SameLine(0.0f, 25.0f);                    // 下一个控件在同一行往右25像素单位
-			if (ImGui::Button("Reset Params"))               // 按钮
+			ImGui::Checkbox("Animate Cube", &animateCube);
+			ImGui::SameLine(0.0f, 25.0f);
+			if (ImGui::Button("Reset Params"))
 			{
 				tx = ty = phi = theta = 0.0f;
 				scale = 1.0f;
 				fov = XM_PIDIV2;
 			}
-			ImGui::SliderFloat("Scale", &scale, 0.2f, 2.0f);  // 拖动控制物体大小
+			ImGui::SliderFloat("Scale", &scale, 0.2f, 2.0f);
 
-			ImGui::Text("Phi: %.2f degrees", XMConvertToDegrees(phi));     // 显示文字，用于描述下面的控件 
-			ImGui::SliderFloat("##1", &phi, -XM_PI, XM_PI, "");            // 不显示控件标题，但使用##来避免标签重复
-			// 空字符串避免显示数字
+			ImGui::Text("Phi: %.2f degrees", XMConvertToDegrees(phi));
+			ImGui::SliderFloat("##1", &phi, -XM_PI, XM_PI, "");
 			ImGui::Text("Theta: %.2f degrees", XMConvertToDegrees(theta));
-			// 另一种写法是ImGui::PushID(2);
-			// 把里面的##2删去
 			ImGui::SliderFloat("##2", &theta, -XM_PI, XM_PI, "");
-			// 然后加上ImGui::PopID(2);
 
 			ImGui::Text("Position: (%.1f, %.1f, 0.0)", tx, ty);
 
@@ -198,17 +195,13 @@ void GameApp::Draw(const GameTimer& gt)
 			{
 				objConstants.useCustomColor = static_cast<uint32_t>(customColor);
 			}
-			// 下面的控件受上面的复选框影响
 			if (customColor)
 			{
-				ImGui::ColorEdit3("Color", reinterpret_cast<float*>(&objConstants.color));  // 编辑颜色
+				ImGui::ColorEdit3("ClearColor", reinterpret_cast<float*>(&ccolor));
+				clearColor = { ccolor.x, ccolor.y, ccolor.z, ccolor.w };
 			}
-			// std::wstring str = std::to_wstring(customColor) + L"\n";
-			std::wstring str = std::to_wstring(objConstants.useCustomColor) + L"\n";
-			::OutputDebugString(str.c_str());
 		}
 		ImGui::End();
-
 		{
 			XMMATRIX world = 
 				XMMatrixScalingFromVector(XMVectorReplicate(scale)) * 
@@ -219,7 +212,6 @@ void GameApp::Draw(const GameTimer& gt)
 			XMStoreFloat4x4(&mProj, proj);
 			XMMATRIX view = XMLoadFloat4x4(&mView);
 			XMMATRIX mvp = world * view * proj;
-			objConstants.color = XMFLOAT4(1.0, 0.0, 0.0, 1.0);
 			XMStoreFloat4x4(&objConstants.WorldViewProj, XMMatrixTranspose(mvp));
 			mObjectCB->CopyData(0, objConstants);
 		}
@@ -237,7 +229,7 @@ void GameApp::Draw(const GameTimer& gt)
 		D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET)));
 
 	// Clear the back buffer and depth buffer.
-	mCommandList->ClearRenderTargetView(CurrentBackBufferView(), Colors::LightSteelBlue, 0, nullptr);
+	mCommandList->ClearRenderTargetView(CurrentBackBufferView(), clearColor, 0, nullptr);
 	mCommandList->ClearDepthStencilView(DepthStencilView(), D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL, 1.0f, 0, 0, nullptr);
 
 	// Specify the buffers we are going to render to.

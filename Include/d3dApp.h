@@ -19,6 +19,24 @@
 // #pragma comment(lib,"d3dcompiler.lib")
 // #pragma comment(lib, "D3D12.lib")
 // #pragma comment(lib, "dxgi.lib")
+class ImguiManager
+{
+public:
+	ImguiManager()
+	{
+		IMGUI_CHECKVERSION();
+		ImGui::CreateContext();
+		ImGuiIO& io = ImGui::GetIO(); (void)io;
+		ImGui::StyleColorsClassic();
+	}
+	~ImguiManager()
+	{
+		ImGui_ImplDX12_Shutdown();
+		ImGui_ImplWin32_Shutdown();
+		ImGui::DestroyContext();
+	}
+};
+
 
 class D3DApp
 {
@@ -76,6 +94,8 @@ protected:
 	void LogAdapterOutputs(IDXGIAdapter* adapter);
 	void LogOutputDisplayModes(IDXGIOutput* output, DXGI_FORMAT format);
 
+	ImguiManager imguiManager;
+
 protected:
 
 	static D3DApp* mApp;
@@ -132,4 +152,6 @@ protected:
 	int mClientWidth = 800;
 	int mClientHeight = 600;
 };
+
+
 
