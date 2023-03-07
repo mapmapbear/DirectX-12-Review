@@ -23,6 +23,69 @@ struct VertexOut
     float4 Color : COLOR;
 };
 
+struct DirectionLight
+{
+	float4 Ambient;
+	float4 Diffuse;
+	float4 Specular;
+	float3 Direction;
+	float pad;
+};
+
+struct PointLight
+{
+	float4 Ambient;
+	float4 Diffuse;
+	float4 Specular;
+
+	float3 Position;
+	float Range;
+
+	float3 Att;
+	float Pad;
+};
+
+struct SpotLight
+{
+	float4 Ambient;
+	float4 Diffuse;
+	float4 Specular;
+
+	float3 Position;
+	float Range;
+
+	float3 Direction;
+	float Spot;
+
+	float3 Att;
+	float Pad;
+};
+
+struct Material
+{
+	float4 Ambient;
+	float4 Diffuse;
+	float4 Specular; // w = SpecPower
+	float4 Reflect;
+};
+
+
+
+void ComputeDirectionLight(Material mat, DirectionLight light, VertexIn in)
+{
+	// TODO
+}
+
+void ComputePointLight(Material mat, PointLight light, VertexIn in)
+{
+	// TODO
+}
+
+void ComputeSpotLight(Material mat, SpotLight light, VertexIn in)
+{
+	// TODO
+}
+
 VertexOut VS(VertexIn vin)
 {
 	VertexOut vout;
@@ -41,5 +104,6 @@ float4 PS(VertexOut pin) : SV_Target
 	return g_UseCustomColor ? g_Color : pin.Color;
 	// return g_Color;
 }
+
 
 
