@@ -140,6 +140,7 @@ void GameApp::Update(const GameTimer& gt)
 
 	ObjectConstants objConstants;
 	XMStoreFloat4x4(&objConstants.WorldViewProj, XMMatrixTranspose(worldViewProj));
+	objConstants.color = XMFLOAT4(0.0, 1.0, 0.0, 1.0);
 	mObjectCB->CopyData(0, objConstants);
 }
 
@@ -193,11 +194,12 @@ void GameApp::Draw(const GameTimer& gt)
 
 			if (ImGui::Checkbox("Use Custom Color", &customColor))
 			{
-				objConstants.useCustomColor = static_cast<uint32_t>(customColor);
+				// objConstants.useCustomColor = static_cast<uint32_t>(customColor);
 			}
 			if (customColor)
 			{
 				ImGui::ColorEdit3("ClearColor", reinterpret_cast<float*>(&ccolor));
+				objConstants.color = XMFLOAT4(ccolor.x, ccolor.y, ccolor.z, ccolor.w);
 				clearColor = { ccolor.x, ccolor.y, ccolor.z, ccolor.w };
 			}
 		}
@@ -213,7 +215,10 @@ void GameApp::Draw(const GameTimer& gt)
 			XMMATRIX view = XMLoadFloat4x4(&mView);
 			XMMATRIX mvp = world * view * proj;
 			XMStoreFloat4x4(&objConstants.WorldViewProj, XMMatrixTranspose(mvp));
+			objConstants.useCustomColor = static_cast<uint32_t>(customColor);
+			objConstants.color = XMFLOAT4(ccolor.x - 0.5f, ccolor.y, ccolor.z, ccolor.w);
 			mObjectCB->CopyData(0, objConstants);
+
 		}
 	}
 

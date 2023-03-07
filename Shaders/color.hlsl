@@ -7,7 +7,7 @@
 cbuffer cbPerObject : register(b0)
 {
 	float4x4 gWorldViewProj;
-	vector g_Color;
+	float4 g_Color;
 	uint g_UseCustomColor;
 };
 
@@ -39,6 +39,7 @@ VertexOut VS(VertexIn vin)
 float4 PS(VertexOut pin) : SV_Target
 {
 	return g_UseCustomColor ? g_Color : pin.Color;
+	// return g_Color;
 }
 
 
