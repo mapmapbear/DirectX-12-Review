@@ -23,6 +23,7 @@ struct ObjectConstants {
 	DirectX::XMFLOAT4X4 WorldViewProj = MathHelper::Identity4x4();
 	DirectX::XMFLOAT4 color;
 	uint32_t useCustomColor;
+	DirectX::XMFLOAT4X4 world;
 };
 
 struct FrameResource {

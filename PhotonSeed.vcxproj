@@ -144,6 +144,7 @@
     <ClCompile Include="main.cpp" />
     <ClCompile Include="Source\d3dApp.cpp" />
     <ClCompile Include="Source\d3dUtil.cpp" />
+    <ClCompile Include="Source\FrameResource.cpp" />
     <ClCompile Include="Source\GameApp.cpp" />
     <ClCompile Include="Source\GameTimer.cpp" />
     <ClCompile Include="Source\imgui_impl_dx12.cpp" />

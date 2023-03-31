@@ -15,9 +15,9 @@ bool GameApp::Initialize() {
 	BuildConstantBuffers();
 	BuildRootSignature();
 	BuildShadersAndInputLayout();
+	BuildFrameResources();
 	BuildBoxGeometry();
 	BuildPSO();
-	//BuildMaterials();
 
 	ThrowIfFailed(mCommandList->Close());
 	ID3D12CommandList *cmdLists[] = { mCommandList.Get() };
@@ -47,6 +47,16 @@ void GameApp::Update(const GameTimer &gt) {
 	XMMATRIX world = XMLoadFloat4x4(&mWorld);
 	XMMATRIX proj = XMLoadFloat4x4(&mProj);
 	XMMATRIX worldViewProj = world * view * proj;
+
+	mCurrFrameResourceIndex = (mCurrFrameResourceIndex + 1) % gNumFrameResources;
+	mCurrFrameResource = mFrameResources[mCurrFrameResourceIndex].get();
+
+	if (mCurrFrameResource->Fence != 0 && mFence->GetCompletedValue() < mCurrFrameResource->Fence) {
+		HANDLE eventHandle = CreateEventEx(nullptr, false, false, EVENT_ALL_ACCESS);
+		ThrowIfFailed(mFence->SetEventOnCompletion(mCurrFrameResource->Fence, eventHandle));
+		WaitForSingleObject(eventHandle, INFINITE);
+		CloseHandle(eventHandle);
+	}
 
 	ObjectConstants objConstants;
 	XMStoreFloat4x4(&objConstants.WorldViewProj, XMMatrixTranspose(worldViewProj));
@@ -175,7 +185,10 @@ void GameApp::Draw(const GameTimer &gt) {
 	// Wait until frame commands are complete.  This waiting is inefficient and is
 	// done for simplicity.  Later we will show how to organize our rendering code
 	// so we do not have to wait per frame.
-	FlushCommandQueue();
+
+	//FlushCommandQueue();
+	mCurrFrameResource->Fence = ++mCurrentFence;
+	mCommandQueue->Signal(mFence.Get(), mCurrentFence);
 }
 
 void GameApp::OnMouseDown(WPARAM btnState, int x, int y) {
@@ -388,4 +401,12 @@ void GameApp::BuildPSO() {
 	psoDesc.SampleDesc.Quality = m4xMsaaState ? (m4xMsaaQuality - 1) : 0;
 	psoDesc.DSVFormat = mDepthStencilFormat;
 	ThrowIfFailed(md3dDevice->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&mPSO)));
+}
+
+void GameApp::BuildFrameResources() {
+	// UINT itemCount = (UINT)mAllRitems.size();
+	UINT itemCount = 1;
+	for (int i = 0; i < gNumFrameResources; ++i) {
+		mFrameResources.push_back(std::make_unique<FrameResource>(md3dDevice.Get(), 1, itemCount));
+	}
 }
