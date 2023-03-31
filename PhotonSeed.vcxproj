@@ -144,6 +144,7 @@
     <ClCompile Include="main.cpp" />
     <ClCompile Include="Source\d3dApp.cpp" />
     <ClCompile Include="Source\d3dUtil.cpp" />
+    <ClCompile Include="Source\GameApp.cpp" />
     <ClCompile Include="Source\GameTimer.cpp" />
     <ClCompile Include="Source\imgui_impl_dx12.cpp" />
     <ClCompile Include="Source\imgui_impl_win32.cpp" />
@@ -154,6 +155,8 @@
     <ClInclude Include="Include\d3dUtil.h" />
     <ClInclude Include="Include\d3dx12.h" />
     <ClInclude Include="Include\DDSTextureLoader.h" />
+    <ClInclude Include="Include\FreamResource.h" />
+    <ClInclude Include="Include\GameApp.h" />
     <ClInclude Include="Include\GameTimer.h" />
     <ClInclude Include="Include\imgui\imconfig.h" />
     <ClInclude Include="Include\imgui\imgui.h" />
