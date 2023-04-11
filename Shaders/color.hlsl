@@ -12,12 +12,13 @@
 //					在此阶段中,一些像素可能会被丢弃(eg,未通过深度缓冲区测试/模板缓冲区测试),剩下的像素片段会被写入后台缓冲区中
 //					混合操作在此阶段实现,此技术可令当前处理的像素与后台缓冲区中的对应像素相融合,而不仅是对后者进行完全的覆写
 
-cbuffer cbPerObject : register(b0) // 通过根签名将常量缓冲区与寄存器槽绑定
+struct cbPerObject// 通过根签名将常量缓冲区与寄存器槽绑定
 {
 	float4x4 gWorld;
 };
+ConstantBuffer<cbPerObject> gCBPerObject : register(b0);
 
-cbuffer cbPass: register(b1)
+struct cbPass
 {
 	float4x4 gView;
 	float4x4 gInvView;
@@ -25,7 +26,7 @@ cbuffer cbPass: register(b1)
 	float4x4 gInvProj;
 	float4x4 gViewProj;
 	float4x4 gInvViewProj;
-	float3 gEyePow;
+float3 gEyePow;
 	float cbPerObjectPad1;
 	float2 gRenderTargetSize;
 	float2 gInvRenderTargetSize;
@@ -34,6 +35,7 @@ cbuffer cbPass: register(b1)
 	float gTotalTime;
 	float gDeltaTime;
 };
+ConstantBuffer<cbPass> gCBPass : register(b1);
 
 struct VertexIn
 {
@@ -55,9 +57,9 @@ VertexOut VS(VertexIn vin)
 {
 	VertexOut vout;
 
-	float4 posW = mul(float4(vin.PosL, 1.0f), gWorld);
+	float4 posW = mul(float4(vin.PosL, 1.0f), gCBPerObject.gWorld);
 	// 转换到齐次裁剪空间
-	vout.PosH = mul(posW, gViewProj);
+	vout.PosH = mul(posW, gCBPass.gViewProj);
 
 	vout.Color = vin.Color;
 
