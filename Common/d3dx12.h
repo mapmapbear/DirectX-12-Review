@@ -17,6 +17,12 @@
 struct CD3DX12_DEFAULT {};
 extern const DECLSPEC_SELECTANY CD3DX12_DEFAULT D3D12_DEFAULT;
 
+template<typename T>
+    requires(!std::is_lvalue_reference_v<T>)
+T* get_rvalue_ptr(T&& v) {
+    return &v;
+}
+
 //------------------------------------------------------------------------------------------------
 inline bool operator==( const D3D12_VIEWPORT& l, const D3D12_VIEWPORT& r )
 {

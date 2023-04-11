@@ -1,8 +1,4 @@
-//***************************************************************************************
-// GameTimer.h by Frank Luna (C) 2011 All Rights Reserved.
-//***************************************************************************************
-
-#ifndef GAMETIMER_H
+﻿#ifndef GAMETIMER_H
 #define GAMETIMER_H
 
 class GameTimer
@@ -10,25 +6,25 @@ class GameTimer
 public:
 	GameTimer();
 
-	float TotalTime()const; // in seconds
-	float DeltaTime()const; // in seconds
+	float TotalTime() const; // 单位s
+	float DeltaTime() const; // 单位s
 
-	void Reset(); // Call before message loop.
-	void Start(); // Call when unpaused.
-	void Stop();  // Call when paused.
-	void Tick();  // Call every frame.
+	void Reset(); // 消息循环开始前执行
+	void Start();
+	void Stop();
+	void Tick();
 
 private:
-	double mSecondsPerCount;
+	double mSecondsPerCount; // s/1次计数
 	double mDeltaTime;
 
-	__int64 mBaseTime;
-	__int64 mPausedTime;
-	__int64 mStopTime;
-	__int64 mPrevTime;
-	__int64 mCurrTime;
+	__int64 mBaseTime; // 调用Reset()的时刻
+	__int64 mPausedTime; // 游戏暂停的总时长
+	__int64 mStopTime; // 如果游戏暂停,暂停开始的时刻
+	__int64 mPrevTime; // 上一帧的时刻
+	__int64 mCurrTime; // 当前时间
 
-	bool mStopped;
+	bool mStopped; // 游戏是否暂停
 };
 
-#endif // GAMETIMER_H
+#endif

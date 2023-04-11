@@ -1,5 +1,6 @@
 ﻿#pragma once
 #pragma once
+#pragma once
 
 #include "Common/d3dUtil.h"
 #include "Common/MathHelper.h"
@@ -7,7 +8,7 @@
 
 struct ObjectConstants
 {
-	DirectX::XMFLOAT4X4 WorldViewProj = MathHelper::Identity4x4();
+	// DirectX::XMFLOAT4X4 WorldViewProj = MathHelper::Identity4x4();
 	DirectX::XMFLOAT4X4 World = MathHelper::Identity4x4();
 };
 
@@ -22,7 +23,7 @@ struct PassConstants
 	DirectX::XMFLOAT3 EyePosW = { 0.0f, 0.0f, 0.0f };
 	float cbPerObjectPad1 = 0.0f;
 	DirectX::XMFLOAT2 RenderTargetSize = { 0.0f, 0.0f };
-	DirectX::XMFLOAT2 InvRenderTargetSize = { 0.0f, 0.0f};
+	DirectX::XMFLOAT2 InvRenderTargetSize = { 0.0f, 0.0f };
 	float NearZ = 0.0f;
 	float FarZ = 0.0f;
 	float TotalTime = 0.0f;
