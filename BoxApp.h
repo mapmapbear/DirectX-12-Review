@@ -3,12 +3,13 @@
 #include "Common/UploadBuffer.h"
 #include "Common/GeometryGenerator.h"
 #include "FrameResource.h"
+#include "Waves.h"
 
 using Microsoft::WRL::ComPtr;
 using namespace DirectX;
 using namespace DirectX::PackedVector;
 
-const int gNumFrameResources = 3;
+extern const int gNumFrameResources;
 
 // struct Vertex
 // {
@@ -58,6 +59,7 @@ private:
 	void UpdateObjectCBs(const GameTimer& gt);
 	void UpdateMainPassCB(const GameTimer& gt);
 	void UpdateCamera(const GameTimer& gt);
+	void UpdateWaves(const GameTimer &gt);
 	virtual void Draw(const GameTimer& gt) override;
 	void DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const std::vector<RenderItem*>& ritems);
 
@@ -75,6 +77,9 @@ private:
 	void BuildFrameResources();
 	void BuildShapeGeometry();
 	void BuildRenderItems();
+	void BuildLandGeometry();
+	float GetHillsHeight(float x, float z) const;
+	void BuildWavesGeometryBuffers();
 
 private:
 
@@ -113,7 +118,8 @@ private:
 
 	UINT mPassCbvOffset = 0; // 渲染过程CBV起始偏移量(最后3个),前面是3n个物体
 
-
+	std::unique_ptr<Waves> mWaves;
+	RenderItem *mWavesRitem = nullptr;
 
 	float mTheta = 1.5f*XM_PI;
 	float mPhi = XM_PIDIV4;
