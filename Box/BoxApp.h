@@ -2,6 +2,7 @@
 #include "Common/MathHelper.h"
 #include "Common/UploadBuffer.h"
 #include "FrameResource.h"
+#include "Waves.h"
 
 using Microsoft::WRL::ComPtr;
 using namespace DirectX;
@@ -57,6 +58,7 @@ private:
 	void UpdateObjectCBs(const GameTimer& gt);
 	void UpdateMainPassCB(const GameTimer& gt);
 	void UpdateCamera(const GameTimer& gt);
+	void UpdateWaves(const GameTimer &gt);
 	virtual void Draw(const GameTimer& gt) override;
 	void DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const std::vector<RenderItem*>& ritems);
 
@@ -73,6 +75,10 @@ private:
 	void BuildPSO(); // 为 mPSO 赋值
 	void BuildFrameResources();
 	void BuildRenderItems();
+	void BuildLandGeometry();
+	float GetHillsHeight(float x, float z) const;
+	XMFLOAT3 GetHillsNormal(float x, float z) const;
+	void BuildWavesGeometryBuffers();
 
 private:
 
@@ -82,6 +88,8 @@ private:
 	std::unique_ptr<UploadBuffer<ObjectConstants>> mObjectCB = nullptr; // 常量缓冲区, Update 中,每帧更新变换矩阵
 
 	std::unique_ptr<MeshGeometry> mBoxGeo = nullptr;
+	std::unique_ptr<MeshGeometry> mLandGeo1 = nullptr;
+	std::unique_ptr<MeshGeometry> mWaveGeo = nullptr;
 
 	ComPtr<ID3DBlob> mvsByteCode = nullptr; // 编译好的顶点着色器字节码
 	ComPtr<ID3DBlob> mpsByteCode = nullptr; // 编译好的像素着色器字节码
@@ -95,22 +103,27 @@ private:
 	XMFLOAT4X4 mProj = MathHelper::Identity4x4();
 
 	PassConstants mMainPassCB;
-	XMFLOAT3 mEyePos = { 0.0f, 5.0f, 0.0f };
+	XMFLOAT3 mEyePos = { 0.0f, 135.0f, 0.0f };
 
 	std::vector<std::unique_ptr<FrameResource>> mFrameResources;
 	FrameResource* mCurrFrameResources = nullptr;
 	int mCurrFrameResourceIndex = 0;
 	std::vector<std::unique_ptr<RenderItem>> mAllRitems;
 
+	std::unordered_map<std::string, std::unique_ptr<MeshGeometry>> mGeometries;
+
+
 	std::vector<RenderItem*> mOpaqueRitems;
 	std::vector<RenderItem*> mTransparentRitems;
 
 	UINT mPassCbvOffset = 0; // 渲染过程CBV起始偏移量(最后3个),前面是3n个物体
 
+	std::unique_ptr<Waves> mWaves;
+
 
 	float mTheta = 1.5f*XM_PI;
 	float mPhi = XM_PIDIV4;
-	float mRadius = 5.0f;
+	float mRadius = 150.0f;
 
 	POINT mLastMousePos;
 };
