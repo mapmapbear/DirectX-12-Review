@@ -576,7 +576,7 @@ void BoxApp::BuildFrameResources()
 {
 	for(int i = 0; i < gNumFrameResources; ++i)
 	{
-		mFrameResources.push_back(std::make_unique<FrameResource>(md3dDevice.Get(), 1, (UINT)mAllRitems.size(), mWaves->VertexCount()));
+		mFrameResources.push_back(std::make_unique<FrameResource>(md3dDevice.Get(), 1, (UINT)mAllRitems.size()));
 		// mFrameResources.push_back(std::make_unique<FrameResource>(md3dDevice.Get(), 1, 1));
 	}
 }
@@ -713,16 +713,16 @@ void BoxApp::BuildRenderItems()
 	boxRitem->BaseVertexLocation = boxRitem->Geo->DrawArgs["box"].BaseVertexLocation;
 	mAllRitems.push_back(std::move(boxRitem));
 
-	auto wavesRitem = std::make_unique<RenderItem>();
-	wavesRitem->World = MathHelper::Identity4x4();
-	wavesRitem->ObjCBIndex = 0;
-	wavesRitem->Geo = mGeometries["waterGeo"].get();
-	wavesRitem->PrimitiveType = D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
-	wavesRitem->IndexCount = wavesRitem->Geo->DrawArgs["grid"].IndexCount;
-	wavesRitem->StartIndexLocation = wavesRitem->Geo->DrawArgs["grid"].StartIndexLocation;
-	wavesRitem->BaseVertexLocation = wavesRitem->Geo->DrawArgs["grid"].BaseVertexLocation;
-	mAllRitems.push_back(std::move(wavesRitem));
-	mWavesRitem = wavesRitem.get();
+	// auto wavesRitem = std::make_unique<RenderItem>();
+	// wavesRitem->World = MathHelper::Identity4x4();
+	// wavesRitem->ObjCBIndex = 0;
+	// wavesRitem->Geo = mGeometries["waterGeo"].get();
+	// wavesRitem->PrimitiveType = D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
+	// wavesRitem->IndexCount = wavesRitem->Geo->DrawArgs["grid"].IndexCount;
+	// wavesRitem->StartIndexLocation = wavesRitem->Geo->DrawArgs["grid"].StartIndexLocation;
+	// wavesRitem->BaseVertexLocation = wavesRitem->Geo->DrawArgs["grid"].BaseVertexLocation;
+	// mAllRitems.push_back(std::move(wavesRitem));
+	// mWavesRitem = wavesRitem.get();
 
 	auto gridItem = std::make_unique<RenderItem>();
 	gridItem->World = MathHelper::Identity4x4();
