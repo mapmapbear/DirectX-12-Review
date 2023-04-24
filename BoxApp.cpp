@@ -23,12 +23,14 @@ bool BoxApp::Initialize()
 {
 	if (!D3DApp::Initialize())
 		return 0;
-
+	mWaves = std::make_unique<Waves>(128, 128, 1.0f, 0.03f, 4.0f, 0.2f);
 	// 重置命令列表,准备初始化
 	ThrowIfFailed(mCommandList->Reset(mDirectCmdListAlloc.Get(), nullptr));
 	BuildRootSignature();
 	BuildShadersAndInputLayout();
+	BuildLandGeometry();
 	BuildShapeGeometry();
+	BuildWavesGeometryBuffers();
 	BuildRenderItems();
 	BuildFrameResources();
 	BuildDescriptorHeaps();
@@ -73,6 +75,7 @@ void BoxApp::Update(const GameTimer& gt)
 
 	UpdateObjectCBs(gt);
 	UpdateMainPassCB(gt);
+	UpdateWaves(gt);
 }
 
 void BoxApp::UpdateObjectCBs(const GameTimer& gt)
@@ -148,14 +151,15 @@ void BoxApp::UpdateWaves(const GameTimer& gt) {
 		mWaves->Disturb(i, j, r);
 	}
 	mWaves->Update(gt.DeltaTime());
-	// auto currWavesVB = mCurrFrameResources->WavesVB.get();
-	// for (int i = 0; i < mWaves->VertexCount(); ++i) {
-	// 	Vertex v;
-	// 	v.Pos = mWaves->Position(i);
-	// 	v.Color = XMFLOAT4(DirectX::Colors::Blue);
-	// 	currWavesVB->CopyData(i, v);
-	// }
-	// mWavesRitem->Geo->VertexBufferGPU = currWavesVB->Resource();
+
+	auto currWavesVB = mCurrFrameResources->WavesVB.get();
+	for (int i = 0; i < mWaves->VertexCount(); ++i) {
+		Vertex v;
+		v.Pos = mWaves->Position(i);
+		v.Color = XMFLOAT4(DirectX::Colors::Blue);
+		currWavesVB->CopyData(i, v);
+	}
+	mGeometries["waterGeo"]->VertexBufferGPU = currWavesVB->Resource();
 }
 
 
@@ -234,18 +238,11 @@ void BoxApp::DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const std::vect
 		cmdList->IASetVertexBuffers(0, 1, get_rvalue_ptr(ri->Geo->VertexBufferView()));
 		cmdList->IASetIndexBuffer(get_rvalue_ptr(ri->Geo->IndexBufferView()));
 		cmdList->IASetPrimitiveTopology(ri->PrimitiveType);
-
-		// 为了绘制当前的帧资源和当前物体,偏移到描述符堆中对应的CBV处
-		// UINT cbvIndex = mCurrFrameResourceIndex * (UINT)mOpaqueRitems.size() + ri->ObjCBIndex;
-		// auto cbvHandle = CD3DX12_GPU_DESCRIPTOR_HANDLE(mCbvHeap->GetGPUDescriptorHandleForHeapStart());
-		// cbvHandle.Offset(cbvIndex, mCbvSrvUavDescriptorSize);
-		//
-		// cmdList->SetGraphicsRootDescriptorTable(0, cbvHandle); // cbuffer cbPerObject : register(b0)
-
+	
 		D3D12_GPU_VIRTUAL_ADDRESS objCBAddress = objectCB->GetGPUVirtualAddress();
 		objCBAddress += ri->ObjCBIndex * objCBByteSize;
 		cmdList->SetGraphicsRootConstantBufferView(0, objCBAddress);
-
+	
 		cmdList->DrawIndexedInstanced(ri->IndexCount, 1, ri->StartIndexLocation, ri->BaseVertexLocation, 0);
 	}
 }
@@ -460,79 +457,6 @@ void BoxApp::BuildShadersAndInputLayout()
 	};
 }
 
-
-void BoxApp::BuildBoxGeometry()
-{
-	std::array<Vertex, 8> vertices = // 顶点,基于局部坐标
-	{
-		Vertex({ XMFLOAT3(-1.0f, -1.0f ,-1.0f), XMFLOAT4(Colors::White) }),
-		Vertex({ XMFLOAT3(-1.0f, +1.0f, -1.0f), XMFLOAT4(Colors::Black) }),
-		Vertex({ XMFLOAT3(+1.0f, +1.0f, -1.0f), XMFLOAT4(Colors::Red) }),
-		Vertex({ XMFLOAT3(+1.0f, -1.0f, -1.0f), XMFLOAT4(Colors::Green) }),
-		Vertex({ XMFLOAT3(-1.0f, -1.0f, +1.0f), XMFLOAT4(Colors::Blue) }),
-		Vertex({ XMFLOAT3(-1.0f, +1.0f, +1.0f), XMFLOAT4(Colors::Yellow) }),
-		Vertex({ XMFLOAT3(+1.0f, +1.0f, +1.0f), XMFLOAT4(Colors::Cyan) }),
-		Vertex({ XMFLOAT3(+1.0f, -1.0f, +1.0f), XMFLOAT4(Colors::Magenta) })
-	};
-
-	std::array<std::uint16_t, 36> indices =
-	{
-		// front face
-		0, 1, 2,
-		0, 2, 3,
-
-		// back face
-		4, 6, 5,
-		4, 7, 6,
-
-		// left face
-		4, 5, 1,
-		4, 1, 0,
-
-		// right face
-		3, 2, 6,
-		3, 6, 7,
-
-		// top face
-		1, 5, 6,
-		1, 6, 2,
-
-		// bottom face
-		4, 0, 3,
-		4, 3, 7
-	};
-
-	const UINT vbByteSize = (UINT)vertices.size() * sizeof(Vertex);
-	const UINT ibByteSize = (UINT)indices.size() * sizeof(std::uint16_t);
-
-	mBoxGeo = std::make_unique<MeshGeometry>();
-	mBoxGeo->Name = "boxGeo";
-	// 创建顶点和索引在内存中的副本
-	ThrowIfFailed(D3DCreateBlob(vbByteSize, &mBoxGeo->VertexBufferCPU));
-	CopyMemory(mBoxGeo->VertexBufferCPU->GetBufferPointer(), vertices.data(), vbByteSize);
-
-	ThrowIfFailed(D3DCreateBlob(ibByteSize, &mBoxGeo->IndexBufferCPU));
-	CopyMemory(mBoxGeo->IndexBufferCPU->GetBufferPointer(), indices.data(), ibByteSize);
-	// 将顶点数据和索引数据上传到GPU默认堆
-	mBoxGeo->VertexBufferGPU = d3dUtil::CreateDefaultBuffer(md3dDevice.Get(),
-		mCommandList.Get(), vertices.data(), vbByteSize, mBoxGeo->VertexBufferUploader);
-
-	mBoxGeo->IndexBufferGPU = d3dUtil::CreateDefaultBuffer(md3dDevice.Get(),
-		mCommandList.Get(), indices.data(), ibByteSize, mBoxGeo->IndexBufferUploader);
-
-	mBoxGeo->VertexByteStride = sizeof(Vertex);
-	mBoxGeo->VertexBufferByteSize = vbByteSize;
-	mBoxGeo->IndexFormat = DXGI_FORMAT_R16_UINT;
-	mBoxGeo->IndexBufferByteSize = ibByteSize;
-
-	SubmeshGeometry submesh;
-	submesh.IndexCount = (UINT)indices.size();
-	submesh.StartIndexLocation = 0;
-	submesh.BaseVertexLocation = 0;
-
-	mBoxGeo->DrawArgs["box"] = submesh;
-}
-
 void BoxApp::BuildPSO()
 {
 	D3D12_GRAPHICS_PIPELINE_STATE_DESC opaquePsoDesc;
@@ -576,8 +500,7 @@ void BoxApp::BuildFrameResources()
 {
 	for(int i = 0; i < gNumFrameResources; ++i)
 	{
-		mFrameResources.push_back(std::make_unique<FrameResource>(md3dDevice.Get(), 1, (UINT)mAllRitems.size()));
-		// mFrameResources.push_back(std::make_unique<FrameResource>(md3dDevice.Get(), 1, 1));
+		mFrameResources.push_back(std::make_unique<FrameResource>(md3dDevice.Get(), 1, (UINT)mAllRitems.size(), mWaves->VertexCount()));
 	}
 }
 
@@ -586,23 +509,16 @@ void BoxApp::BuildShapeGeometry()
 	GeometryGenerator geoGen;
 	GeometryGenerator::MeshData box = geoGen.CreateBox(1.5f, 0.5f, 1.5f, 3);
 	GeometryGenerator::MeshData grid = geoGen.CreateGrid(20.0f, 30.0f, 60, 40);
-	GeometryGenerator::MeshData sphere = geoGen.CreateSphere(0.5f, 20, 20);
-	GeometryGenerator::MeshData cylinder = geoGen.CreateCylinder(0.5f, 0.3f, 3.0f, 20, 20);
-
 	// 将所有的几何体数据都合并到一对大的顶点/索引缓冲区中
 	// 以此来定义每个子网格数据在缓冲区中所占的范围
 
 	// 对合并顶点缓冲区中每个物体的顶点偏移量进行缓存
 	UINT boxVertexOffset = 0;
 	UINT gridVertexOffset = (UINT)box.Vertices.size();
-	UINT sphereVertexOffset = gridVertexOffset + (UINT)grid.Vertices.size();
-	UINT cylinderVertexOffset = sphereVertexOffset + (UINT)sphere.Vertices.size();
 
 	// 对合并索引缓存区中每个物体的起始索引进行缓存
 	UINT boxIndexOffset = 0;
 	UINT gridIndexOffset = (UINT)box.Indices32.size();
-	UINT sphereIndexOffset = gridIndexOffset + (UINT)grid.Indices32.size();
-	UINT cylinderIndexOffset = sphereIndexOffset + (UINT)sphere.Indices32.size();
 
 	// 定义的多个SubmeshGeometry结构体包含了顶点/索引缓冲区内不同几何体的子网格数据
 
@@ -616,23 +532,11 @@ void BoxApp::BuildShapeGeometry()
 	gridSubmesh.StartIndexLocation = gridIndexOffset;
 	gridSubmesh.BaseVertexLocation = gridVertexOffset;
 
-	SubmeshGeometry sphereSubmesh;
-	sphereSubmesh.IndexCount = (UINT)sphere.Indices32.size();
-	sphereSubmesh.StartIndexLocation = sphereIndexOffset;
-	sphereSubmesh.BaseVertexLocation = sphereVertexOffset;
-
-	SubmeshGeometry cylinderSubmesh;
-	cylinderSubmesh.IndexCount = (UINT)cylinder.Indices32.size();
-	cylinderSubmesh.StartIndexLocation = cylinderIndexOffset;
-	cylinderSubmesh.BaseVertexLocation = cylinderVertexOffset;
-
 	// 提取所有的顶点元素,再将所有网格的顶点装进一个顶点缓冲区
 
 	auto totalVertexCount =
-		box.Vertices.size() +
-		grid.Vertices.size() +
-		sphere.Vertices.size() +
-		cylinder.Vertices.size();
+			box.Vertices.size() +
+			grid.Vertices.size();
 
 	std::vector<Vertex> vertices(totalVertexCount);
 
@@ -649,23 +553,10 @@ void BoxApp::BuildShapeGeometry()
 		vertices[k].Color = XMFLOAT4(DirectX::Colors::Orange);
 	}
 
-	for (size_t i = 0; i < sphere.Vertices.size(); ++i, ++k)
-	{
-		vertices[k].Pos = sphere.Vertices[i].Position;
-		vertices[k].Color = XMFLOAT4(DirectX::Colors::Crimson);
-	}
-
-	for (size_t i = 0; i < cylinder.Vertices.size(); ++i, ++k)
-	{
-		vertices[k].Pos = cylinder.Vertices[i].Position;
-		vertices[k].Color = XMFLOAT4(DirectX::Colors::SteelBlue);
-	}
-
 	std::vector<std::uint16_t> indices;
 	indices.insert(indices.end(), std::begin(box.GetIndices16()), std::end(box.GetIndices16()));
 	indices.insert(indices.end(), std::begin(grid.GetIndices16()), std::end(grid.GetIndices16()));
-	indices.insert(indices.end(), std::begin(sphere.GetIndices16()), std::end(sphere.GetIndices16()));
-	indices.insert(indices.end(), std::begin(cylinder.GetIndices16()), std::end(cylinder.GetIndices16()));
+	
 
 	const UINT vbByteSize = (UINT)vertices.size() * sizeof(Vertex);
 	const UINT ibByteSize = (UINT)indices.size() * sizeof(std::uint16_t);
@@ -692,8 +583,6 @@ void BoxApp::BuildShapeGeometry()
 
 	geo->DrawArgs["box"] = boxSubmesh;
 	geo->DrawArgs["grid"] = gridSubmesh;
-	geo->DrawArgs["sphere"] = sphereSubmesh;
-	geo->DrawArgs["cylinder"] = cylinderSubmesh;
 	// 修改 mGeometries[geo->Name],将几个几何体的顶点和索引合并传到GPU, geo->VertexBufferUploader,
 	// 在CPU也有内存副本 geo->VertexBufferCPU
 	mGeometries[geo->Name] = std::move(geo);
@@ -712,18 +601,7 @@ void BoxApp::BuildRenderItems()
 	boxRitem->StartIndexLocation = boxRitem->Geo->DrawArgs["box"].StartIndexLocation;
 	boxRitem->BaseVertexLocation = boxRitem->Geo->DrawArgs["box"].BaseVertexLocation;
 	mAllRitems.push_back(std::move(boxRitem));
-
-	// auto wavesRitem = std::make_unique<RenderItem>();
-	// wavesRitem->World = MathHelper::Identity4x4();
-	// wavesRitem->ObjCBIndex = 0;
-	// wavesRitem->Geo = mGeometries["waterGeo"].get();
-	// wavesRitem->PrimitiveType = D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
-	// wavesRitem->IndexCount = wavesRitem->Geo->DrawArgs["grid"].IndexCount;
-	// wavesRitem->StartIndexLocation = wavesRitem->Geo->DrawArgs["grid"].StartIndexLocation;
-	// wavesRitem->BaseVertexLocation = wavesRitem->Geo->DrawArgs["grid"].BaseVertexLocation;
-	// mAllRitems.push_back(std::move(wavesRitem));
-	// mWavesRitem = wavesRitem.get();
-
+	
 	auto gridItem = std::make_unique<RenderItem>();
 	gridItem->World = MathHelper::Identity4x4();
 	gridItem->ObjCBIndex = 1;
@@ -734,62 +612,29 @@ void BoxApp::BuildRenderItems()
 	gridItem->BaseVertexLocation = gridItem->Geo->DrawArgs["grid"].BaseVertexLocation;
 	mAllRitems.push_back(std::move(gridItem));
 
-	UINT objCBIndex = 2;
-	for (int i = 0; i < 5; ++i)
-	{
-		auto leftCylRitem = std::make_unique<RenderItem>();
-		auto rightCylRitem = std::make_unique<RenderItem>();
-		auto leftSphereRitem = std::make_unique<RenderItem>();
-		auto rightSphereRitem = std::make_unique<RenderItem>();
+	auto lanItem = std::make_unique<RenderItem>();
+	lanItem->World = MathHelper::Identity4x4();
+	lanItem->ObjCBIndex = 2;
+	lanItem->Geo = mGeometries["landGeo"].get();
+	lanItem->PrimitiveType = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
+	lanItem->IndexCount = lanItem->Geo->DrawArgs["grid"].IndexCount;
+	lanItem->StartIndexLocation = lanItem->Geo->DrawArgs["grid"].StartIndexLocation;
+	lanItem->BaseVertexLocation = lanItem->Geo->DrawArgs["grid"].BaseVertexLocation;
+	mAllRitems.push_back(std::move(lanItem));
 
-		XMMATRIX leftCylWorld = XMMatrixTranslation(-5.0f, 1.5f, -10.0f + i * 5.0f);
-		XMMATRIX rightCylWorld = XMMatrixTranslation(+5.0f, 1.5f, -10.0f + i * 5.0f);
-
-		XMMATRIX leftSphereWorld = XMMatrixTranslation(-5.0f, 3.5f, -10.0f + i * 5.0f);
-		XMMATRIX rightSphereWorld = XMMatrixTranslation(+5.0f, 3.5f, -10.0f + i * 5.0f);
-
-		XMStoreFloat4x4(&leftCylRitem->World, leftCylWorld);
-		leftCylRitem->ObjCBIndex = objCBIndex++;
-		leftCylRitem->Geo = mGeometries["shapeGeo"].get();
-		leftCylRitem->PrimitiveType = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
-		leftCylRitem->IndexCount = leftCylRitem->Geo->DrawArgs["cylinder"].IndexCount;
-		leftCylRitem->StartIndexLocation = leftCylRitem->Geo->DrawArgs["cylinder"].StartIndexLocation;
-		leftCylRitem->BaseVertexLocation = leftCylRitem->Geo->DrawArgs["cylinder"].BaseVertexLocation;
-
-		XMStoreFloat4x4(&rightCylRitem->World, rightCylWorld);
-		rightCylRitem->ObjCBIndex = objCBIndex++;
-		rightCylRitem->Geo = mGeometries["shapeGeo"].get();
-		rightCylRitem->PrimitiveType = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
-		rightCylRitem->IndexCount = rightCylRitem->Geo->DrawArgs["cylinder"].IndexCount;
-		rightCylRitem->StartIndexLocation = rightCylRitem->Geo->DrawArgs["cylinder"].StartIndexLocation;
-		rightCylRitem->BaseVertexLocation = rightCylRitem->Geo->DrawArgs["cylinder"].BaseVertexLocation;
-
-		XMStoreFloat4x4(&leftSphereRitem->World, leftSphereWorld);
-		leftSphereRitem->ObjCBIndex = objCBIndex++;
-		leftSphereRitem->Geo = mGeometries["shapeGeo"].get();
-		leftSphereRitem->PrimitiveType = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
-		leftSphereRitem->IndexCount = leftSphereRitem->Geo->DrawArgs["sphere"].IndexCount;
-		leftSphereRitem->StartIndexLocation = leftSphereRitem->Geo->DrawArgs["sphere"].StartIndexLocation;
-		leftSphereRitem->BaseVertexLocation = leftSphereRitem->Geo->DrawArgs["sphere"].BaseVertexLocation;
-
-		XMStoreFloat4x4(&rightSphereRitem->World, rightSphereWorld);
-		rightSphereRitem->ObjCBIndex = objCBIndex++;
-		rightSphereRitem->Geo = mGeometries["shapeGeo"].get();
-		rightSphereRitem->PrimitiveType = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
-		rightSphereRitem->IndexCount = rightSphereRitem->Geo->DrawArgs["sphere"].IndexCount;
-		rightSphereRitem->StartIndexLocation = rightSphereRitem->Geo->DrawArgs["sphere"].StartIndexLocation;
-		rightSphereRitem->BaseVertexLocation = rightSphereRitem->Geo->DrawArgs["sphere"].BaseVertexLocation;
-
-		mAllRitems.push_back(std::move(leftCylRitem));
-		mAllRitems.push_back(std::move(rightCylRitem));
-		mAllRitems.push_back(std::move(leftSphereRitem));
-		mAllRitems.push_back(std::move(rightSphereRitem));
-	}
+	auto waveItem = std::make_unique<RenderItem>();
+	waveItem->World = MathHelper::Identity4x4();
+	waveItem->ObjCBIndex = 3;
+	waveItem->Geo = mGeometries["waterGeo"].get();
+	waveItem->PrimitiveType = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
+	waveItem->IndexCount = waveItem->Geo->DrawArgs["grid"].IndexCount;
+	waveItem->StartIndexLocation = waveItem->Geo->DrawArgs["grid"].StartIndexLocation;
+	waveItem->BaseVertexLocation = waveItem->Geo->DrawArgs["grid"].BaseVertexLocation;
+	mAllRitems.push_back(std::move(waveItem));
 
 	for (auto& e : mAllRitems)
 		mOpaqueRitems.push_back(e.get());
 }
-
 void BoxApp::BuildLandGeometry() {
 	GeometryGenerator genGen;
 	GeometryGenerator::MeshData grid = genGen.CreateGrid(160.0f, 160.0f, 50, 50);
@@ -810,35 +655,37 @@ void BoxApp::BuildLandGeometry() {
 			vertices[i].Color = XMFLOAT4(0.45f, 0.39f, 0.34f, 1.0f);
 		else 
 			vertices[i].Color = XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f);
-
-		const UINT vbByteSize = (UINT)vertices.size() * sizeof(Vertex);
-		std::vector<std::uint16_t> indices = grid.GetIndices16();
-		const UINT ibByteSize = (UINT)indices.size() * sizeof(std::uint16_t);
-		auto geo = std::make_unique<MeshGeometry>();
-		geo->Name = "landGeo";
-		// vertex to CPU Mem
-		ThrowIfFailed(D3DCreateBlob(vbByteSize, &geo->VertexBufferCPU));
-		CopyMemory(geo->VertexBufferCPU->GetBufferPointer(), vertices.data(), vbByteSize);
-		// index to CPU Mem
-		ThrowIfFailed(D3DCreateBlob(ibByteSize, &geo->IndexBufferCPU));
-		CopyMemory(geo->IndexBufferCPU->GetBufferPointer(), indices.data(), ibByteSize);
-
-		// create GPU Mem
-		geo->VertexBufferGPU = d3dUtil::CreateDefaultBuffer(md3dDevice.Get(), mCommandList.Get(), vertices.data(), vbByteSize, geo->VertexBufferUploader);
-		geo->IndexBufferGPU = d3dUtil::CreateDefaultBuffer(md3dDevice.Get(), mCommandList.Get(), indices.data(), ibByteSize, geo->IndexBufferUploader);
-
-		geo->VertexByteStride = sizeof(Vertex);
-		geo->VertexBufferByteSize = vbByteSize;
-		geo->IndexFormat = DXGI_FORMAT_R16_UINT;
-		geo->IndexBufferByteSize = ibByteSize;
-
-		SubmeshGeometry subMesh;
-		subMesh.IndexCount = (UINT)indices.size();
-		subMesh.StartIndexLocation = 0;
-		subMesh.BaseVertexLocation = 0;
-		geo->DrawArgs["grid"] = subMesh;
-		mGeometries["landGeo"] = std::move(geo);
 	}
+	const UINT vbByteSize = (UINT)vertices.size() * sizeof(Vertex);
+	std::vector<std::uint16_t> indices = grid.GetIndices16();
+	const UINT ibByteSize = (UINT)indices.size() * sizeof(std::uint16_t);
+	auto geo = std::make_unique<MeshGeometry>();
+
+	SubmeshGeometry subMesh;
+	subMesh.IndexCount = (UINT)indices.size();
+	subMesh.StartIndexLocation = 0;
+	subMesh.BaseVertexLocation = 0;
+
+	geo->Name = "landGeo";
+	// vertex to CPU Mem
+	ThrowIfFailed(D3DCreateBlob(vbByteSize, &geo->VertexBufferCPU));
+	CopyMemory(geo->VertexBufferCPU->GetBufferPointer(), vertices.data(), vbByteSize);
+	// index to CPU Mem
+	ThrowIfFailed(D3DCreateBlob(ibByteSize, &geo->IndexBufferCPU));
+	CopyMemory(geo->IndexBufferCPU->GetBufferPointer(), indices.data(), ibByteSize);
+
+	// create GPU Mem
+	geo->VertexBufferGPU = d3dUtil::CreateDefaultBuffer(md3dDevice.Get(), mCommandList.Get(), vertices.data(), vbByteSize, geo->VertexBufferUploader);
+	geo->IndexBufferGPU = d3dUtil::CreateDefaultBuffer(md3dDevice.Get(), mCommandList.Get(), indices.data(), ibByteSize, geo->IndexBufferUploader);
+
+	geo->VertexByteStride = sizeof(Vertex);
+	geo->VertexBufferByteSize = vbByteSize;
+	geo->IndexFormat = DXGI_FORMAT_R16_UINT;
+	geo->IndexBufferByteSize = ibByteSize;
+
+	
+	geo->DrawArgs["grid"] = subMesh;
+	mGeometries["landGeo"] = std::move(geo);
 }
 
 float BoxApp::GetHillsHeight(float x, float z) const {
@@ -872,7 +719,6 @@ void BoxApp::BuildWavesGeometryBuffers() {
 	auto geo = std::make_unique<MeshGeometry>();
 	geo->Name = "waterGeo";
 
-	// ��̬����
 	geo->VertexBufferCPU = nullptr;
 	geo->VertexBufferGPU = nullptr;
 
