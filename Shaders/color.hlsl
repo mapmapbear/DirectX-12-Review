@@ -36,6 +36,14 @@ struct cbPass {
 };
 ConstantBuffer<cbPass> gCBPass : register(b1);
 
+struct cbMaterial {
+	float4 gDiffuseAlbedo; // 漫反射反照率
+	float3 gFresnelR0; // 材质属性RF(0°),影响镜面反射
+	float gRoughness;
+	float4x4 gMatTransform;
+};
+ConstantBuffer<cbMaterial> gMatCBPass : register(b2);
+
 struct VertexIn {
 	// 语义 "POSITION" 对应 D3D12_INPUT_ELEMENT_DESC 的 "POSITION"
 	// D3D12_INPUT_ELEMENT_DESC 通过先后顺序对应 Vertex 结构体中的属性
@@ -67,5 +75,6 @@ VertexOut VS(VertexIn vin) {
 // SV_Target: 返回值的类型应当与渲染目标格式相匹配(该输出值会被存于渲染目标之中)
 float4 PS(VertexOut pin) :
 		SV_Target {
-	return pin.Color;
+	// return pin.Color;
+	return gMatCBPass.gDiffuseAlbedo;
 }

@@ -29,6 +29,7 @@ bool BoxApp::Initialize()
 	BuildRootSignature();
 	BuildShadersAndInputLayout();
 	BuildShapeGeometry();
+	BuildMaterials();
 	BuildRenderItems();
 	BuildFrameResources();
 	BuildDescriptorHeaps();
@@ -73,6 +74,7 @@ void BoxApp::Update(const GameTimer& gt)
 
 	UpdateObjectCBs(gt);
 	UpdateMainPassCB(gt);
+	UpdateMaterialCBs(gt);
 }
 
 void BoxApp::UpdateObjectCBs(const GameTimer& gt)
@@ -120,6 +122,25 @@ void BoxApp::UpdateMainPassCB(const GameTimer& gt)
 
 	auto currPassCB = mCurrFrameResources->PassCB.get();
 	currPassCB->CopyData(0, mMainPassCB);
+}
+
+void BoxApp::UpdateMaterialCBs(const GameTimer &gt) {
+	auto currMaterialCB = mCurrFrameResources->MaterialCB.get();
+	for (auto &e : mMaterials) {
+		Material *mat = e.second.get();
+		if (mat->NumFramesDirty > 0) {
+			XMMATRIX mTransform = XMLoadFloat4x4(&mat->MatTransform);
+
+			MaterialConstants matConstants;
+			matConstants.DiffuseAlbedo = mat->DiffuseAlbedo;
+			matConstants.FresnelR0 = mat->FresnelR0;
+			matConstants.Roughness = mat->Roughness;
+
+			currMaterialCB->CopyData(mat->MatCBIndex, matConstants);
+
+			mat->NumFramesDirty--;
+		}
+	}
 }
 
 void BoxApp::UpdateCamera(const GameTimer& gt)
@@ -243,8 +264,9 @@ void BoxApp::Draw(const GameTimer& gt)
 void BoxApp::DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const std::vector<RenderItem*>& ritems)
 {
 	UINT objCBByteSize = d3dUtil::CalcConstantBufferByteSize(sizeof(ObjectConstants));
-
+	UINT matCBByteSize = d3dUtil::CalcConstantBufferByteSize(sizeof(MaterialConstants));
 	auto objectCB = mCurrFrameResources->ObjectCB->Resource();
+	auto materialCB = mCurrFrameResources->MaterialCB->Resource();
 
 	// For each render item...
 	for (size_t i = 0; i < ritems.size(); ++i) {
@@ -256,7 +278,12 @@ void BoxApp::DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const std::vect
 
 		D3D12_GPU_VIRTUAL_ADDRESS objCBAddress = objectCB->GetGPUVirtualAddress();
 		objCBAddress += ri->ObjCBIndex * objCBByteSize;
+
+		D3D12_GPU_VIRTUAL_ADDRESS matCBAddress = materialCB->GetGPUVirtualAddress();
+		// matCBAddress += ri->Mat->MatCBIndex * matCBByteSize;
+
 		cmdList->SetGraphicsRootConstantBufferView(0, objCBAddress);
+		cmdList->SetGraphicsRootConstantBufferView(2, matCBAddress);
 
 		cmdList->DrawIndexedInstanced(ri->IndexCount, 1, ri->StartIndexLocation, ri->BaseVertexLocation, 0);
 	}
@@ -415,7 +442,7 @@ void BoxApp::BuildRootSignature()
 
 	// 根参数可以是根常量,根描述符,或根描述符表
 	// 描述符表指定的是描述符堆中存有描述符的一块连续区域
-	CD3DX12_ROOT_PARAMETER slotRootParameter[2];
+	CD3DX12_ROOT_PARAMETER slotRootParameter[3];
 
 	// CD3DX12_DESCRIPTOR_RANGE cbvTable0;
 	// // para1: 描述符表的类型
@@ -436,11 +463,12 @@ void BoxApp::BuildRootSignature()
 
 	slotRootParameter[0].InitAsConstantBufferView(0);
 	slotRootParameter[1].InitAsConstantBufferView(1);
+	slotRootParameter[2].InitAsConstantBufferView(2);
 	// slotRootParameter[2].InitAsConstantBufferView(2);
 
 
 	// 根签名是根参数数组
-	CD3DX12_ROOT_SIGNATURE_DESC rootSigDesc(2, slotRootParameter, 0, nullptr,
+	CD3DX12_ROOT_SIGNATURE_DESC rootSigDesc(3, slotRootParameter, 0, nullptr,
 		D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
 
 	ComPtr<ID3DBlob> serializedRootSig = nullptr;
@@ -552,7 +580,6 @@ void BoxApp::BuildPSO()
 	D3D12_GRAPHICS_PIPELINE_STATE_DESC opaquePsoDesc;
 
 	// PSO for opaque objects
-
 	ZeroMemory(&opaquePsoDesc, sizeof(D3D12_GRAPHICS_PIPELINE_STATE_DESC));
 	opaquePsoDesc.InputLayout = { mInputLayout.data(),(UINT)mInputLayout.size() };
 	opaquePsoDesc.pRootSignature = mRootSignature.Get();
@@ -590,7 +617,7 @@ void BoxApp::BuildFrameResources()
 {
 	for(int i = 0; i < gNumFrameResources; ++i)
 	{
-		mFrameResources.push_back(std::make_unique<FrameResource>(md3dDevice.Get(), 1, (UINT)mAllRitems.size()));
+		mFrameResources.push_back(std::make_unique<FrameResource>(md3dDevice.Get(), 1, (UINT)mAllRitems.size(), mMaterials.size()));
 	}
 }
 
@@ -911,4 +938,25 @@ void BoxApp::BuildWavesGeometryBuffers() {
 	geo->DrawArgs["grid"] = submesh;
 
 	mGeometries["waterGeo"] = std::move(geo);
+}
+
+void BoxApp::BuildMaterials() {
+	auto grass = std::make_unique<Material>();
+	grass->Name = "grass";
+	grass->MatCBIndex = 0;
+	grass->DiffuseAlbedo = XMFLOAT4(0.2f, 0.6f, 0.2f, 1.0f);
+	grass->FresnelR0 = XMFLOAT3(0.01f, 0.01f, 0.01f);
+	grass->Roughness = 0.125f;
+
+	// 当前这种水的材质定义不好
+	auto water = std::make_unique<Material>();
+	water->Name = "water";
+	water->MatCBIndex = 1;
+	water->DiffuseAlbedo = XMFLOAT4(0.0f, 0.2f, 0.6f, 1.0f);
+	water->FresnelR0 = XMFLOAT3(0.1f, 0.1f, 0.1f);
+	water->Roughness = 0.0f;
+
+	// 将材质数据存放在系统内存之中,为了GPU能够在着色器中访问,还需复制到常量缓冲区中
+	mMaterials["grass"] = std::move(grass);
+	mMaterials["water"] = std::move(water);
 }
