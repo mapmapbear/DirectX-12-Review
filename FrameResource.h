@@ -29,6 +29,8 @@ struct PassConstants
 	float FarZ = 0.0f;
 	float TotalTime = 0.0f;
 	float DeltaTime = 0.0f;
+	DirectX::XMFLOAT4 AmbientLight = { 0.0f, 0.0f, 0.0f, 1.0f };
+	Light Lights[MaxLights];
 };
 
 struct Vertex
@@ -42,11 +44,11 @@ struct Vertex
 struct FrameResource
 {
 public:
-
-	FrameResource(ID3D12Device *device, UINT passCount, UINT objectCount);
 	FrameResource(const FrameResource& rhs) = delete;
 	FrameResource& operator=(const FrameResource& rhs) = delete;
+	FrameResource(ID3D12Device *device, UINT passCount, UINT objectCount);
 	FrameResource(ID3D12Device *device, UINT passCount, UINT objectCount, UINT waveVertCount);
+	FrameResource(ID3D12Device *device, UINT passCount, UINT objectCount, UINT waveVertCount, UINT materialCount);
 	~FrameResource();
 
 	// We cannot reset the allocator until the GPU is done processing the commands.
@@ -58,6 +60,7 @@ public:
 	std::unique_ptr<UploadBuffer<PassConstants>> PassCB = nullptr;
 	std::unique_ptr<UploadBuffer<ObjectConstants>> ObjectCB = nullptr;
 	std::unique_ptr<UploadBuffer<Vertex>> WavesVB = nullptr;
+	std::unique_ptr<UploadBuffer<MaterialConstants>> MaterialCB = nullptr;
 
 	// Fence value to mark commands up to this fence point.  This lets us
 	// check if these frame resources are still in use by the GPU.

@@ -11,6 +11,20 @@
 // 输出合并阶段  :	通过像素着色器生成的像素片段会被移送至输出合并阶段
 //					在此阶段中,一些像素可能会被丢弃(eg,未通过深度缓冲区测试/模板缓冲区测试),剩下的像素片段会被写入后台缓冲区中
 //					混合操作在此阶段实现,此技术可令当前处理的像素与后台缓冲区中的对应像素相融合,而不仅是对后者进行完全的覆写
+#ifndef NUM_DIR_LIGHTS
+#define NUM_DIR_LIGHTS 3
+#endif
+
+#ifndef NUM_POINT_LIGHTS
+#define NUM_POINT_LIGHTS 0
+#endif
+
+#ifndef NUM_SPOT_LIGHTS
+#define NUM_SPOT_LIGHTS 0
+#endif
+
+// Include structures and functions for lighting.
+#include "LightingUtil.hlsl"
 
 cbuffer cbPerObject : register(b0) // 通过根签名将常量缓冲区与寄存器槽绑定
 {
@@ -25,7 +39,7 @@ cbuffer cbPass: register(b1)
 	float4x4 gInvProj;
 	float4x4 gViewProj;
 	float4x4 gInvViewProj;
-	float3 gEyePow;
+	float3 gEyePosW;
 	float cbPerObjectPad1;
 	float2 gRenderTargetSize;
 	float2 gInvRenderTargetSize;
@@ -33,6 +47,15 @@ cbuffer cbPass: register(b1)
 	float gFarZ;
 	float gTotalTime;
 	float gDeltaTime;
+	float4 gAmbientLight;
+	Light gLights[MaxLights];
+};
+
+cbuffer cbMaterial : register(b2) {
+	float4 gDiffuseAlbedo;
+	float3 gFresnelR0;
+	float gRoughness;
+	float4x4 gMatTransform;
 };
 
 struct VertexIn
@@ -40,15 +63,16 @@ struct VertexIn
 	// 语义 "POSITION" 对应 D3D12_INPUT_ELEMENT_DESC 的 "POSITION"
 	// D3D12_INPUT_ELEMENT_DESC 通过先后顺序对应 Vertex 结构体中的属性
 	float3 PosL		: POSITION;
-	float4 Color	: COLOR;
+	float3 NormalL : NORMAL;
 };
 
 struct VertexOut
 {
 	// SV: System Value, 它所修饰的顶点着色器输出元素存有齐次裁剪空间中的顶点位置信息
 	// 必须为输出位置信息的参数附上 SV_POSITION 语义
-	float4 PosH		: SV_POSITION;
-	float4 Color	: COLOR;
+	float4 PosH : SV_POSITION;
+	float3 PosW : POSITION;
+	float3 NormalW : NORMAL;
 };
 
 VertexOut VS(VertexIn vin)
@@ -57,10 +81,9 @@ VertexOut VS(VertexIn vin)
 
 	float4 posW = mul(float4(vin.PosL, 1.0f), gWorld);
 	// 转换到齐次裁剪空间
+	vout.PosW = posW;
 	vout.PosH = mul(posW, gViewProj);
-
-	vout.Color = vin.Color;
-
+	vout.NormalW = mul(vin.NormalL, (float3x3)gWorld);
 	return vout;
 }
 
@@ -69,5 +92,6 @@ VertexOut VS(VertexIn vin)
 // SV_Target: 返回值的类型应当与渲染目标格式相匹配(该输出值会被存于渲染目标之中)
 float4 PS(VertexOut pin) : SV_Target
 {
-	return pin.Color;
+	// return pin.Color;
+	return gDiffuseAlbedo;
 }
