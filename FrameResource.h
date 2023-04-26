@@ -46,6 +46,7 @@ struct FrameResource
 public:
 	FrameResource(const FrameResource& rhs) = delete;
 	FrameResource& operator=(const FrameResource& rhs) = delete;
+	FrameResource(ID3D12Device *device, UINT passCount, UINT objectCount);
 	~FrameResource();
 
 	// We cannot reset the allocator until the GPU is done processing the commands.

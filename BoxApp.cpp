@@ -158,24 +158,24 @@ void BoxApp::UpdateWaves(const GameTimer& gt) {
 	// mWavesRitem->Geo->VertexBufferGPU = currWavesVB->Resource();
 }
 
-void BoxApp::UpdateMaterialCBs(const GameTimer &gt) {
-	auto currMaterialCB = mCurrFrameResources->MaterialCB.get();
-	for (auto &e : mMaterials) {
-		Material *mat = e.second.get();
-		if (mat->NumFramesDirty > 0) {
-			XMMATRIX mTransform = XMLoadFloat4x4(&mat->MatTransform);
-
-			MaterialConstants matConstants;
-			matConstants.DiffuseAlbedo = mat->DiffuseAlbedo;
-			matConstants.FresnelR0 = mat->FresnelR0;
-			matConstants.Roughness = mat->Roughness;
-
-			currMaterialCB->CopyData(mat->MatCBIndex, matConstants);
-
-			mat->NumFramesDirty--;
-		}
-	}
-}
+// void BoxApp::UpdateMaterialCBs(const GameTimer &gt) {
+// 	auto currMaterialCB = mCurrFrameResources->MaterialCB.get();
+// 	for (auto &e : mMaterials) {
+// 		Material *mat = e.second.get();
+// 		if (mat->NumFramesDirty > 0) {
+// 			XMMATRIX mTransform = XMLoadFloat4x4(&mat->MatTransform);
+//
+// 			MaterialConstants matConstants;
+// 			matConstants.DiffuseAlbedo = mat->DiffuseAlbedo;
+// 			matConstants.FresnelR0 = mat->FresnelR0;
+// 			matConstants.Roughness = mat->Roughness;
+//
+// 			currMaterialCB->CopyData(mat->MatCBIndex, matConstants);
+//
+// 			mat->NumFramesDirty--;
+// 		}
+// 	}
+// }
 
 
 void BoxApp::Draw(const GameTimer& gt)
@@ -243,10 +243,8 @@ void BoxApp::Draw(const GameTimer& gt)
 void BoxApp::DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const std::vector<RenderItem*>& ritems)
 {
 	UINT objCBByteSize = d3dUtil::CalcConstantBufferByteSize(sizeof(ObjectConstants));
-	UINT matCBByteSize = d3dUtil::CalcConstantBufferByteSize(sizeof(MaterialConstants));
 
 	auto objectCB = mCurrFrameResources->ObjectCB->Resource();
-	auto matCB = mCurrFrameResources->MaterialCB->Resource();
 
 	// For each render item...
 	for (size_t i = 0; i < ritems.size(); ++i) {
@@ -255,13 +253,6 @@ void BoxApp::DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const std::vect
 		cmdList->IASetVertexBuffers(0, 1, get_rvalue_ptr(ri->Geo->VertexBufferView()));
 		cmdList->IASetIndexBuffer(get_rvalue_ptr(ri->Geo->IndexBufferView()));
 		cmdList->IASetPrimitiveTopology(ri->PrimitiveType);
-
-		// 为了绘制当前的帧资源和当前物体,偏移到描述符堆中对应的CBV处
-		// UINT cbvIndex = mCurrFrameResourceIndex * (UINT)mOpaqueRitems.size() + ri->ObjCBIndex;
-		// auto cbvHandle = CD3DX12_GPU_DESCRIPTOR_HANDLE(mCbvHeap->GetGPUDescriptorHandleForHeapStart());
-		// cbvHandle.Offset(cbvIndex, mCbvSrvUavDescriptorSize);
-		//
-		// cmdList->SetGraphicsRootDescriptorTable(0, cbvHandle); // cbuffer cbPerObject : register(b0)
 
 		D3D12_GPU_VIRTUAL_ADDRESS objCBAddress = objectCB->GetGPUVirtualAddress();
 		objCBAddress += ri->ObjCBIndex * objCBByteSize;
@@ -369,28 +360,6 @@ void BoxApp::BuildConstantBufferViews()
 		}
 	}
 
-	for (int frameIndex = 0; frameIndex < gNumFrameResources; ++frameIndex) {
-		auto matCB = mFrameResources[frameIndex]->MaterialCB->Resource();
-		for (UINT i = 0; i < objCount; ++i) {
-			D3D12_GPU_VIRTUAL_ADDRESS cbAddress = matCB->GetGPUVirtualAddress(); // 这里将 World和描述符关联
-
-			// 偏移到缓冲区中第i个物体的常量缓冲区
-			cbAddress += i * matCBByteSize;
-
-			// 偏移到该物体在描述符堆中的CBV
-			int heapIndex = frameIndex * objCount + i;
-			auto handle = CD3DX12_CPU_DESCRIPTOR_HANDLE(mCbvHeap->GetCPUDescriptorHandleForHeapStart());
-			// 在描述符堆中的句柄按照字节偏移 (frameIndex * objCount + i) * mCbvSrvUavDescriptorSize
-			handle.Offset(heapIndex, mCbvSrvUavDescriptorSize);
-
-			D3D12_CONSTANT_BUFFER_VIEW_DESC cbvDesc;
-			cbvDesc.BufferLocation = cbAddress; // 物体的常量缓存地址按照字节偏移 i * sizeof(ObjectConstants)
-			cbvDesc.SizeInBytes = matCBByteSize;
-
-			md3dDevice->CreateConstantBufferView(&cbvDesc, handle);
-		}
-	}
-
 	UINT passCBByteSize = d3dUtil::CalcConstantBufferByteSize(sizeof(PassConstants));
 
 	// 最后3个描述符依次是每个帧资源的渲染过程CBV
@@ -446,7 +415,7 @@ void BoxApp::BuildRootSignature()
 
 	// 根参数可以是根常量,根描述符,或根描述符表
 	// 描述符表指定的是描述符堆中存有描述符的一块连续区域
-	CD3DX12_ROOT_PARAMETER slotRootParameter[3];
+	CD3DX12_ROOT_PARAMETER slotRootParameter[2];
 
 	// CD3DX12_DESCRIPTOR_RANGE cbvTable0;
 	// // para1: 描述符表的类型
@@ -467,11 +436,11 @@ void BoxApp::BuildRootSignature()
 
 	slotRootParameter[0].InitAsConstantBufferView(0);
 	slotRootParameter[1].InitAsConstantBufferView(1);
-	slotRootParameter[2].InitAsConstantBufferView(2);
+	// slotRootParameter[2].InitAsConstantBufferView(2);
 
 
 	// 根签名是根参数数组
-	CD3DX12_ROOT_SIGNATURE_DESC rootSigDesc(3, slotRootParameter, 0, nullptr,
+	CD3DX12_ROOT_SIGNATURE_DESC rootSigDesc(2, slotRootParameter, 0, nullptr,
 		D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
 
 	ComPtr<ID3DBlob> serializedRootSig = nullptr;
@@ -622,7 +591,6 @@ void BoxApp::BuildFrameResources()
 	for(int i = 0; i < gNumFrameResources; ++i)
 	{
 		mFrameResources.push_back(std::make_unique<FrameResource>(md3dDevice.Get(), 1, (UINT)mAllRitems.size()));
-		// mFrameResources.push_back(std::make_unique<FrameResource>(md3dDevice.Get(), 1, 1));
 	}
 }
 
