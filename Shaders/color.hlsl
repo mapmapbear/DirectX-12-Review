@@ -48,14 +48,14 @@ struct VertexIn {
 	// 语义 "POSITION" 对应 D3D12_INPUT_ELEMENT_DESC 的 "POSITION"
 	// D3D12_INPUT_ELEMENT_DESC 通过先后顺序对应 Vertex 结构体中的属性
 	float3 PosL : POSITION;
-	float4 Color : COLOR;
+	float4 NormalL : NORMAL;
 };
 
 struct VertexOut {
 	// SV: System Value, 它所修饰的顶点着色器输出元素存有齐次裁剪空间中的顶点位置信息
 	// 必须为输出位置信息的参数附上 SV_POSITION 语义
 	float4 PosH : SV_POSITION;
-	float4 Color : COLOR;
+	float3 NormalW : NORMAL;
 };
 
 VertexOut VS(VertexIn vin) {
@@ -65,7 +65,7 @@ VertexOut VS(VertexIn vin) {
 	// 转换到齐次裁剪空间
 	vout.PosH = mul(posW, gCBPass.gViewProj);
 
-	vout.Color = vin.Color;
+	vout.NormalW = mul(vin.NormalL, (float3x3)gCBPerObject.gWorld);
 
 	return vout;
 }
@@ -76,5 +76,5 @@ VertexOut VS(VertexIn vin) {
 float4 PS(VertexOut pin) :
 		SV_Target {
 	// return pin.Color;
-	return gMatCBPass.gDiffuseAlbedo;
+	return float4(pin.NormalW, 1.0);
 }

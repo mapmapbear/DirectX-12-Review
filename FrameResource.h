@@ -36,7 +36,8 @@ struct PassConstants
 struct Vertex
 {
 	DirectX::XMFLOAT3 Pos;
-	DirectX::XMFLOAT4 Color;
+	// DirectX::XMFLOAT4 Color;
+	DirectX::XMFLOAT3 Normal;
 };
 
 // Stores the resources needed for the CPU to build the command lists

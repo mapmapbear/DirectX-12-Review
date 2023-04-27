@@ -78,6 +78,7 @@ private:
 	void BuildPSO(); // 为 mPSO 赋值
 	void BuildFrameResources();
 	void BuildShapeGeometry();
+	void BuildShapeGeometry1();
 	void BuildRenderItems();
 	void BuildLandGeometry();
 	float GetHillsHeight(float x, float z) const;
