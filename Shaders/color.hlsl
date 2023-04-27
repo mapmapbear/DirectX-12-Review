@@ -12,6 +12,21 @@
 //					在此阶段中,一些像素可能会被丢弃(eg,未通过深度缓冲区测试/模板缓冲区测试),剩下的像素片段会被写入后台缓冲区中
 //					混合操作在此阶段实现,此技术可令当前处理的像素与后台缓冲区中的对应像素相融合,而不仅是对后者进行完全的覆写
 
+#ifndef NUM_DIR_LIGHTS
+#define NUM_DIR_LIGHTS 3
+#endif
+
+#ifndef NUM_POINT_LIGHTS
+#define NUM_POINT_LIGHTS 0
+#endif
+
+#ifndef NUM_SPOT_LIGHTS
+#define NUM_SPOT_LIGHTS 0
+#endif
+
+#include "LightingUtil.hlsl"
+
+
 struct cbPerObject // 通过根签名将常量缓冲区与寄存器槽绑定
 {
 	float4x4 gWorld;
@@ -33,6 +48,8 @@ struct cbPass {
 	float gFarZ;
 	float gTotalTime;
 	float gDeltaTime;
+	float4 gAmbientLight;
+	Light gLights[MaxLights];
 };
 ConstantBuffer<cbPass> gCBPass : register(b1);
 
@@ -55,6 +72,7 @@ struct VertexOut {
 	// SV: System Value, 它所修饰的顶点着色器输出元素存有齐次裁剪空间中的顶点位置信息
 	// 必须为输出位置信息的参数附上 SV_POSITION 语义
 	float4 PosH : SV_POSITION;
+	float3 PosW : POSITION;
 	float3 NormalW : NORMAL;
 };
 
@@ -64,17 +82,29 @@ VertexOut VS(VertexIn vin) {
 	float4 posW = mul(float4(vin.PosL, 1.0f), gCBPerObject.gWorld);
 	// 转换到齐次裁剪空间
 	vout.PosH = mul(posW, gCBPass.gViewProj);
-
+	vout.PosW = posW;
 	vout.NormalW = mul(vin.NormalL, (float3x3)gCBPerObject.gWorld);
-
 	return vout;
 }
 
 // 在光栅化期间(为三角形计算像素颜色)对顶点着色器(或几何着色器)输出的顶点属性进行差值
 // 随后,再将这些差值数据传至像素着色器中作为它的输入
 // SV_Target: 返回值的类型应当与渲染目标格式相匹配(该输出值会被存于渲染目标之中)
-float4 PS(VertexOut pin) :
-		SV_Target {
-	// return pin.Color;
-	return float4(pin.NormalW, 1.0);
+float4 PS(VertexOut pin) : SV_Target {
+	pin.NormalW = normalize(pin.NormalW);
+
+	// Vector from point being lit to eye.
+	float3 toEyeW = normalize(gCBPass.gEyePow - pin.PosW);
+	
+	// Indirect lighting.
+	float4 ambient = gCBPass.gAmbientLight * gMatCBPass.gDiffuseAlbedo;
+	
+	const float shininess = 1.0f - gMatCBPass.gRoughness;
+	
+	Material mat = { gMatCBPass.gDiffuseAlbedo, gMatCBPass.gFresnelR0, shininess };
+	float3 shadowFactor = 1.0f;
+	float4 directLight = ComputeLighting(gCBPass.gLights, mat, pin.PosW, pin.NormalW, toEyeW, shadowFactor);
+	float4 litColor = ambient + directLight;
+	litColor.a = gMatCBPass.gDiffuseAlbedo.a;
+	return litColor;
 }
