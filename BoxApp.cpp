@@ -280,7 +280,7 @@ void BoxApp::DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const std::vect
 		objCBAddress += ri->ObjCBIndex * objCBByteSize;
 
 		D3D12_GPU_VIRTUAL_ADDRESS matCBAddress = materialCB->GetGPUVirtualAddress();
-		// matCBAddress += ri->Mat->MatCBIndex * matCBByteSize;
+		matCBAddress += ri->Mat->MatCBIndex * matCBByteSize;
 
 		cmdList->SetGraphicsRootConstantBufferView(0, objCBAddress);
 		cmdList->SetGraphicsRootConstantBufferView(2, matCBAddress);
@@ -382,6 +382,29 @@ void BoxApp::BuildConstantBufferViews()
 			D3D12_CONSTANT_BUFFER_VIEW_DESC cbvDesc;
 			cbvDesc.BufferLocation = cbAddress; // 物体的常量缓存地址按照字节偏移 i * sizeof(ObjectConstants)
 			cbvDesc.SizeInBytes = objCBByteSize;
+
+			md3dDevice->CreateConstantBufferView(&cbvDesc, handle);
+		}
+	}
+
+	// material CBV
+	for (int frameIndex = 0; frameIndex < gNumFrameResources; ++frameIndex) {
+		auto materialCB = mFrameResources[frameIndex]->MaterialCB->Resource();
+		for (UINT i = 0; i < mMaterials.size(); ++i) {
+			D3D12_GPU_VIRTUAL_ADDRESS cbAddress = materialCB->GetGPUVirtualAddress(); // 这里将 World和描述符关联
+
+			// 偏移到缓冲区中第i个物体的常量缓冲区
+			cbAddress += i * matCBByteSize;
+
+			// 偏移到该物体在描述符堆中的CBV
+			int heapIndex = frameIndex * objCount + i * mOpaqueRitems[i]->Mat->MatCBIndex;
+			auto handle = CD3DX12_CPU_DESCRIPTOR_HANDLE(mCbvHeap->GetCPUDescriptorHandleForHeapStart());
+			// 在描述符堆中的句柄按照字节偏移 (frameIndex * objCount + i) * mCbvSrvUavDescriptorSize
+			handle.Offset(heapIndex, mCbvSrvUavDescriptorSize);
+
+			D3D12_CONSTANT_BUFFER_VIEW_DESC cbvDesc;
+			cbvDesc.BufferLocation = cbAddress; // 物体的常量缓存地址按照字节偏移 i * sizeof(ObjectConstants)
+			cbvDesc.SizeInBytes = matCBByteSize;
 
 			md3dDevice->CreateConstantBufferView(&cbvDesc, handle);
 		}
@@ -768,7 +791,6 @@ void BoxApp::BuildRenderItems()
 	auto gridItem = std::make_unique<RenderItem>();
 	gridItem->World = MathHelper::Identity4x4();
 	gridItem->ObjCBIndex = 1;
-	gridItem->Mat = mMaterials["grass"].get();
 	gridItem->Geo = mGeometries["shapeGeo"].get();
 	gridItem->Mat = mMaterials["grass"].get();
 	gridItem->PrimitiveType = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
@@ -777,52 +799,59 @@ void BoxApp::BuildRenderItems()
 	gridItem->BaseVertexLocation = gridItem->Geo->DrawArgs["grid"].BaseVertexLocation;
 	mAllRitems.push_back(std::move(gridItem));
 
+	
+
 	UINT objCBIndex = 2;
+
 	for (int i = 0; i < 5; ++i)
 	{
 		auto leftCylRitem = std::make_unique<RenderItem>();
 		auto rightCylRitem = std::make_unique<RenderItem>();
 		auto leftSphereRitem = std::make_unique<RenderItem>();
 		auto rightSphereRitem = std::make_unique<RenderItem>();
-
+	
 		XMMATRIX leftCylWorld = XMMatrixTranslation(-5.0f, 1.5f, -10.0f + i * 5.0f);
 		XMMATRIX rightCylWorld = XMMatrixTranslation(+5.0f, 1.5f, -10.0f + i * 5.0f);
-
+	
 		XMMATRIX leftSphereWorld = XMMatrixTranslation(-5.0f, 3.5f, -10.0f + i * 5.0f);
 		XMMATRIX rightSphereWorld = XMMatrixTranslation(+5.0f, 3.5f, -10.0f + i * 5.0f);
-
+	
 		XMStoreFloat4x4(&leftCylRitem->World, leftCylWorld);
 		leftCylRitem->ObjCBIndex = objCBIndex++;
 		leftCylRitem->Geo = mGeometries["shapeGeo"].get();
+		leftCylRitem->Mat = mMaterials["water"].get();
 		leftCylRitem->PrimitiveType = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
 		leftCylRitem->IndexCount = leftCylRitem->Geo->DrawArgs["cylinder"].IndexCount;
 		leftCylRitem->StartIndexLocation = leftCylRitem->Geo->DrawArgs["cylinder"].StartIndexLocation;
 		leftCylRitem->BaseVertexLocation = leftCylRitem->Geo->DrawArgs["cylinder"].BaseVertexLocation;
-
+	
 		XMStoreFloat4x4(&rightCylRitem->World, rightCylWorld);
 		rightCylRitem->ObjCBIndex = objCBIndex++;
 		rightCylRitem->Geo = mGeometries["shapeGeo"].get();
+		rightCylRitem->Mat = mMaterials["water"].get();
 		rightCylRitem->PrimitiveType = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
 		rightCylRitem->IndexCount = rightCylRitem->Geo->DrawArgs["cylinder"].IndexCount;
 		rightCylRitem->StartIndexLocation = rightCylRitem->Geo->DrawArgs["cylinder"].StartIndexLocation;
 		rightCylRitem->BaseVertexLocation = rightCylRitem->Geo->DrawArgs["cylinder"].BaseVertexLocation;
-
+	
 		XMStoreFloat4x4(&leftSphereRitem->World, leftSphereWorld);
 		leftSphereRitem->ObjCBIndex = objCBIndex++;
 		leftSphereRitem->Geo = mGeometries["shapeGeo"].get();
+		leftSphereRitem->Mat = mMaterials["water"].get();
 		leftSphereRitem->PrimitiveType = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
 		leftSphereRitem->IndexCount = leftSphereRitem->Geo->DrawArgs["sphere"].IndexCount;
 		leftSphereRitem->StartIndexLocation = leftSphereRitem->Geo->DrawArgs["sphere"].StartIndexLocation;
 		leftSphereRitem->BaseVertexLocation = leftSphereRitem->Geo->DrawArgs["sphere"].BaseVertexLocation;
-
+	
 		XMStoreFloat4x4(&rightSphereRitem->World, rightSphereWorld);
 		rightSphereRitem->ObjCBIndex = objCBIndex++;
 		rightSphereRitem->Geo = mGeometries["shapeGeo"].get();
+		rightSphereRitem->Mat = mMaterials["water"].get();
 		rightSphereRitem->PrimitiveType = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
 		rightSphereRitem->IndexCount = rightSphereRitem->Geo->DrawArgs["sphere"].IndexCount;
 		rightSphereRitem->StartIndexLocation = rightSphereRitem->Geo->DrawArgs["sphere"].StartIndexLocation;
 		rightSphereRitem->BaseVertexLocation = rightSphereRitem->Geo->DrawArgs["sphere"].BaseVertexLocation;
-
+	
 		mAllRitems.push_back(std::move(leftCylRitem));
 		mAllRitems.push_back(std::move(rightCylRitem));
 		mAllRitems.push_back(std::move(leftSphereRitem));
