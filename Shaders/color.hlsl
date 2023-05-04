@@ -26,10 +26,14 @@
 
 #include "LightingUtil.hlsl"
 
+Texture2D gDiffuseMap : register(t0); // 纹理
+SamplerState gsamLinear : register(s0); // 采样器
+
 
 struct cbPerObject // 通过根签名将常量缓冲区与寄存器槽绑定
 {
 	float4x4 gWorld;
+	float4x4 gTexTransform; // UV需要乘这个矩阵
 };
 ConstantBuffer<cbPerObject> gCBPerObject : register(b0);
 
@@ -66,6 +70,7 @@ struct VertexIn {
 	// D3D12_INPUT_ELEMENT_DESC 通过先后顺序对应 Vertex 结构体中的属性
 	float3 PosL : POSITION;
 	float4 NormalL : NORMAL;
+	float2 UV0 : TEXCOORD;
 };
 
 struct VertexOut {
@@ -74,6 +79,7 @@ struct VertexOut {
 	float4 PosH : SV_POSITION;
 	float3 PosW : POSITION;
 	float3 NormalW : NORMAL;
+	float2 UV0 : TEXCOORD;
 };
 
 VertexOut VS(VertexIn vin) {
@@ -84,27 +90,35 @@ VertexOut VS(VertexIn vin) {
 	vout.PosH = mul(posW, gCBPass.gViewProj);
 	vout.PosW = posW;
 	vout.NormalW = mul(vin.NormalL, (float3x3)gCBPerObject.gWorld);
+	float4 UV = mul(float4(vin.UV0, 0.0f, 1.0f), gCBPerObject.gTexTransform);
+	vout.UV0 = mul(UV, gMatCBPass.gMatTransform).xy;
 	return vout;
 }
 
 // 在光栅化期间(为三角形计算像素颜色)对顶点着色器(或几何着色器)输出的顶点属性进行差值
 // 随后,再将这些差值数据传至像素着色器中作为它的输入
 // SV_Target: 返回值的类型应当与渲染目标格式相匹配(该输出值会被存于渲染目标之中)
-float4 PS(VertexOut pin) : SV_Target {
+float4 PS(VertexOut pin) :
+		SV_Target {
+	// 从纹理中提取此像素的漫反射反照率
+	// 将纹理样本与常量缓冲区中的反照率相乘
+	float4 diffuseAlbedo = gDiffuseMap.Sample(gsamLinear, pin.UV0) * gMatCBPass.gDiffuseAlbedo;
+
 	pin.NormalW = normalize(pin.NormalW);
 
 	// Vector from point being lit to eye.
 	float3 toEyeW = normalize(gCBPass.gEyePow - pin.PosW);
-	
+
 	// Indirect lighting.
-	float4 ambient = gCBPass.gAmbientLight * gMatCBPass.gDiffuseAlbedo;
-	
+	float4 ambient = gCBPass.gAmbientLight * diffuseAlbedo;
+
 	const float shininess = 1.0f - gMatCBPass.gRoughness;
-	
-	Material mat = { gMatCBPass.gDiffuseAlbedo, gMatCBPass.gFresnelR0, shininess };
+
+	Material mat = { diffuseAlbedo, gMatCBPass.gFresnelR0, shininess };
 	float3 shadowFactor = 1.0f;
 	float4 directLight = ComputeLighting(gCBPass.gLights, mat, pin.PosW, pin.NormalW, toEyeW, shadowFactor);
 	float4 litColor = ambient + directLight;
-	litColor.a = gMatCBPass.gDiffuseAlbedo.a;
-	return litColor;
+	litColor.a = diffuseAlbedo.a;
+	// return litColor;
+	return diffuseAlbedo;
 }

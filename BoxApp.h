@@ -11,22 +11,13 @@ using namespace DirectX::PackedVector;
 
 extern const int gNumFrameResources;
 
-// struct Vertex
-// {
-// 	XMFLOAT3 Pos;
-// 	XMFLOAT4 Color;
-// };
-//
-// struct ObjectConstants
-// {
-// 	XMFLOAT4X4 WorldViewProj = MathHelper::Identity4x4();
-// };
-
 struct RenderItem
 {
 	RenderItem() = default;
 
 	XMFLOAT4X4 World = MathHelper::Identity4x4();
+	XMFLOAT4X4 TexTransform = MathHelper::Identity4x4();
+
 
 	int NumFramesDirty = gNumFrameResources;
 
@@ -72,26 +63,27 @@ private:
 	void BuildDescriptorHeaps(); // 创建常量缓冲区描述符堆,为 mCbvHeap 赋值, RTV,DSV 描述符堆已在基类初始化
 	void BuildConstantBufferViews();
 	void BuildConstantBuffers(); // 为 mObjectCB 分配空间,描述符存在 mCbvHeap 中
+	std::array<const CD3DX12_STATIC_SAMPLER_DESC, 6> GetStaticSamplers();
 	void BuildRootSignature(); // 根签名指定了常量缓冲区绑定到哪个着色器寄存器
 	void BuildShadersAndInputLayout(); // 指定 VS, PS, mInputLayout(顶点结构体映射到VS的输入参数)
-	void BuildBoxGeometry(); // 将顶点/索引上传到默认堆, 存到 mBoxGeo 中
 	void BuildPSO(); // 为 mPSO 赋值
 	void BuildFrameResources();
-	void BuildShapeGeometry();
 	void BuildShapeGeometry1();
 	void BuildRenderItems();
-	void BuildLandGeometry();
 	float GetHillsHeight(float x, float z) const;
 	void BuildWavesGeometryBuffers();
 	void BuildMaterials();
+	void LoadTextures();
 
 private:
 
 	ComPtr<ID3D12RootSignature> mRootSignature = nullptr; // 根签名,指定了着色器程序所需的资源(CBV对应哪个着色器寄存器)
 	ComPtr<ID3D12DescriptorHeap> mCbvHeap = nullptr; // 常量缓冲区描述符
+	ComPtr<ID3D12DescriptorHeap> mSrvHeap = nullptr;
 
 	std::unique_ptr<UploadBuffer<ObjectConstants>> mObjectCB = nullptr; // 常量缓冲区, Update 中,每帧更新变换矩阵
 	std::unique_ptr<UploadBuffer<PassConstants>> mPassCB = nullptr;
+
 
 	std::unique_ptr<MeshGeometry> mBoxGeo = nullptr;
 
@@ -120,6 +112,7 @@ private:
 	std::unordered_map<std::string, std::unique_ptr<Material>> mMaterials;
 	std::unordered_map<std::string, ComPtr<ID3DBlob>> mShaders;
 	std::unordered_map<std::string, ComPtr<ID3D12PipelineState>> mPSOs;
+	std::unordered_map<std::string, std::unique_ptr<Texture>> mTextures;
 
 	UINT mPassCbvOffset = 0; // 渲染过程CBV起始偏移量(最后3个),前面是3n个物体
 
@@ -131,4 +124,5 @@ private:
 	float mRadius = 15.0f;
 
 	POINT mLastMousePos;
+	UINT mCbvSrvDescriptorSize;
 };

@@ -23,6 +23,9 @@ bool BoxApp::Initialize()
 {
 	if (!D3DApp::Initialize())
 		return 0;
+	mCbvSrvDescriptorSize = md3dDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+
+	LoadTextures();
 
 	// 重置命令列表,准备初始化
 	ThrowIfFailed(mCommandList->Reset(mDirectCmdListAlloc.Get(), nullptr));
@@ -85,10 +88,11 @@ void BoxApp::UpdateObjectCBs(const GameTimer& gt)
 		if (e->NumFramesDirty > 0)
 		{
 			XMMATRIX world = XMLoadFloat4x4(&e->World);
+			XMMATRIX texTransform = XMLoadFloat4x4(&e->TexTransform);
 
 			ObjectConstants objConstants;
 			XMStoreFloat4x4(&objConstants.World, XMMatrixTranspose(world));
-
+			XMStoreFloat4x4(&objConstants.TexTransform, XMMatrixTranspose(texTransform));
 			currObjectCB->CopyData(e->ObjCBIndex, objConstants);
 
 			e->NumFramesDirty--;
@@ -176,35 +180,7 @@ void BoxApp::UpdateWaves(const GameTimer& gt) {
 		mWaves->Disturb(i, j, r);
 	}
 	mWaves->Update(gt.DeltaTime());
-	// auto currWavesVB = mCurrFrameResources->WavesVB.get();
-	// for (int i = 0; i < mWaves->VertexCount(); ++i) {
-	// 	Vertex v;
-	// 	v.Pos = mWaves->Position(i);
-	// 	v.Color = XMFLOAT4(DirectX::Colors::Blue);
-	// 	currWavesVB->CopyData(i, v);
-	// }
-	// mWavesRitem->Geo->VertexBufferGPU = currWavesVB->Resource();
 }
-
-// void BoxApp::UpdateMaterialCBs(const GameTimer &gt) {
-// 	auto currMaterialCB = mCurrFrameResources->MaterialCB.get();
-// 	for (auto &e : mMaterials) {
-// 		Material *mat = e.second.get();
-// 		if (mat->NumFramesDirty > 0) {
-// 			XMMATRIX mTransform = XMLoadFloat4x4(&mat->MatTransform);
-//
-// 			MaterialConstants matConstants;
-// 			matConstants.DiffuseAlbedo = mat->DiffuseAlbedo;
-// 			matConstants.FresnelR0 = mat->FresnelR0;
-// 			matConstants.Roughness = mat->Roughness;
-//
-// 			currMaterialCB->CopyData(mat->MatCBIndex, matConstants);
-//
-// 			mat->NumFramesDirty--;
-// 		}
-// 	}
-// }
-
 
 void BoxApp::Draw(const GameTimer& gt)
 {
@@ -235,18 +211,13 @@ void BoxApp::Draw(const GameTimer& gt)
 	// 设置 mCbvHeap,里面为每个帧资源的每一个物体和过程常量设了一个描述符,
 	// 将帧资源中的物体缓存和过程缓存使用 index*bytesize,通过handle偏移绑定,
 	// 物体常量和过程常量缓存通过CopyData()赋值
-	ID3D12DescriptorHeap* descriptorHeaps[] = { mCbvHeap.Get() };
+	ID3D12DescriptorHeap* descriptorHeaps[] = { mCbvHeap.Get()};
 	mCommandList->SetDescriptorHeaps(_countof(descriptorHeaps), descriptorHeaps);
 	// 其实PSO中有根签名
 	mCommandList->SetGraphicsRootSignature(mRootSignature.Get());
 
-	// int passCbvIndex = mPassCbvOffset + mCurrFrameResourceIndex;
-	// auto passCbvHandle = CD3DX12_GPU_DESCRIPTOR_HANDLE(mCbvHeap->GetGPUDescriptorHandleForHeapStart());
-	// passCbvHandle.Offset(passCbvIndex, mCbvSrvUavDescriptorSize);
-	// // 将过程常量绑定到着色器寄存器,cbuffer cbPass : register(b1)
-	// mCommandList->SetGraphicsRootDescriptorTable(1, passCbvHandle);
 	auto passCB = mCurrFrameResources->PassCB->Resource();
-	mCommandList->SetGraphicsRootConstantBufferView(1, passCB->GetGPUVirtualAddress());
+	mCommandList->SetGraphicsRootConstantBufferView(2, passCB->GetGPUVirtualAddress());
 
 	DrawRenderItems(mCommandList.Get(), mOpaqueRitems);
 
@@ -289,8 +260,14 @@ void BoxApp::DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const std::vect
 		D3D12_GPU_VIRTUAL_ADDRESS matCBAddress = materialCB->GetGPUVirtualAddress();
 		matCBAddress += ri->Mat->MatCBIndex * matCBByteSize;
 
-		cmdList->SetGraphicsRootConstantBufferView(0, objCBAddress);
-		cmdList->SetGraphicsRootConstantBufferView(2, matCBAddress);
+		CD3DX12_GPU_DESCRIPTOR_HANDLE tex(mCbvHeap->GetGPUDescriptorHandleForHeapStart());
+		// BuildRenderItems()中设置了Mat,struct Material内含有DiffuseSrvHeapIndex
+		tex.Offset(ri->Mat->DiffuseSrvHeapIndex, mCbvSrvDescriptorSize);
+
+		cmdList->SetGraphicsRootDescriptorTable(0, tex);
+
+		cmdList->SetGraphicsRootConstantBufferView(1, objCBAddress);
+		cmdList->SetGraphicsRootConstantBufferView(3, matCBAddress);
 
 		cmdList->DrawIndexedInstanced(ri->IndexCount, 1, ri->StartIndexLocation, ri->BaseVertexLocation, 0);
 	}
@@ -347,18 +324,23 @@ void BoxApp::BuildDescriptorHeaps()
 
 	// 为每个帧资源中的每一个物体都创建一个CBV描述符
 	// 为每个帧资源的渲染过程CBV而+1
-	UINT numDescriptors = (objCount + 1) * gNumFrameResources;
+	UINT numDescriptors = (objCount + 1) * gNumFrameResources + 1;
 
 	// 偏移到过程常量
 	mPassCbvOffset = objCount * gNumFrameResources;
 
+	// 创建cbv堆
 	D3D12_DESCRIPTOR_HEAP_DESC cbvHeapDesc;
 	cbvHeapDesc.NumDescriptors = numDescriptors; // 描述符数量
 	cbvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
 	cbvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
 	cbvHeapDesc.NodeMask = 0;
-	ThrowIfFailed(md3dDevice->CreateDescriptorHeap(&cbvHeapDesc,
-		IID_PPV_ARGS(&mCbvHeap)));
+	ThrowIfFailed(md3dDevice->CreateDescriptorHeap(&cbvHeapDesc, IID_PPV_ARGS(&mCbvHeap)));
+
+	// 创建SRV堆
+
+	// Fill out the heap with actual descriptors.
+	
 }
 
 // 改的还是 cbvHeap,每个帧资源中的每一个物体都需要一个对应的CBV描述符,将物体的常量缓冲区地址和偏移后的句柄绑定,	在描述符堆中的句柄按照字节偏移 (frameIndex * objCount + i) * mCbvSrvUavDescriptorSize  物体的常量缓存地址按照字节偏移 i * sizeof(ObjectConstants)
@@ -436,6 +418,23 @@ void BoxApp::BuildConstantBufferViews()
 
 		md3dDevice->CreateConstantBufferView(&cbvDesc, handle);
 	}
+
+	for (int frameIndex = 0; frameIndex < gNumFrameResources; ++frameIndex) {
+
+		auto woodCrateTex = mTextures["woodCrateTex"]->Resource;
+		CD3DX12_CPU_DESCRIPTOR_HANDLE hDescriptor(mCbvHeap->GetCPUDescriptorHandleForHeapStart());
+		auto heapIndex = frameIndex;
+		D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+		// 提供方法,可以将采样时所返回的纹理向量中的分量进行重新排序
+		srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+		srvDesc.Format = woodCrateTex->GetDesc().Format;
+		srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+		srvDesc.Texture2D.MostDetailedMip = 0; // 此视图中图像细节最详尽的mipmap层级的索引
+		srvDesc.Texture2D.MipLevels = woodCrateTex->GetDesc().MipLevels; // 此视图的mipmap层级数量,以MostDetailedMip为起始值
+		srvDesc.Texture2D.ResourceMinLODClamp = 1.0f; // 可以访问的最小mipmap层级
+
+		md3dDevice->CreateShaderResourceView(woodCrateTex.Get(), &srvDesc, hDescriptor);
+	}
 }
 
 void BoxApp::BuildConstantBuffers()
@@ -461,63 +460,98 @@ void BoxApp::BuildConstantBuffers()
 		mCbvHeap->GetCPUDescriptorHandleForHeapStart());
 }
 
-void BoxApp::BuildRootSignature()
-{
-	// 着色器程序一般需要以资源作为输入(eg,常量缓冲区,纹理,采样器等)
-	// 根签名定义了着色器程序所需的具体资源
-	// 如果把着色器程序看做一个函数,而将输入的资源看做向函数传递的参数数据
-	// 那么便可类似地认为根签名定义的是函数签名
+std::array<const CD3DX12_STATIC_SAMPLER_DESC, 6> BoxApp::GetStaticSamplers() {
+	// 应用程序一般只会用到这些采样器的一部分
+	// 所以就将它们全部提前定义好,并作为根签名的一部分保留下来
 
-	// 根签名以一组描述绘制调用过程中,着色器所需资源的根参数定义而成 
+	const CD3DX12_STATIC_SAMPLER_DESC pointWrap(
+			0, // shaderRegister 着色器寄存器
+			D3D12_FILTER_MIN_MAG_MIP_POINT, // filter 过滤器类型 点过滤
+			D3D12_TEXTURE_ADDRESS_MODE_WRAP, // addressU U轴方向上所用的寻址模式 重复寻址模式
+			D3D12_TEXTURE_ADDRESS_MODE_WRAP, // addressV
+			D3D12_TEXTURE_ADDRESS_MODE_WRAP); // addressW
 
-	// 根参数可以是根常量,根描述符,或根描述符表
-	// 描述符表指定的是描述符堆中存有描述符的一块连续区域
-	CD3DX12_ROOT_PARAMETER slotRootParameter[3];
+	const CD3DX12_STATIC_SAMPLER_DESC pointClamp(
+			1, // shaderRegister
+			D3D12_FILTER_MIN_MAG_MIP_POINT, // filter
+			D3D12_TEXTURE_ADDRESS_MODE_CLAMP, // addressU 钳位寻址模式
+			D3D12_TEXTURE_ADDRESS_MODE_CLAMP, // addressV
+			D3D12_TEXTURE_ADDRESS_MODE_CLAMP); // addressW
 
-	// CD3DX12_DESCRIPTOR_RANGE cbvTable0;
-	// // para1: 描述符表的类型
-	// // para2: 表中描述符的数量
-	// // para3: 将这段描述符区域绑定至此基址着色器寄存器
-	// cbvTable0.Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 0);
-	//
-	// CD3DX12_DESCRIPTOR_RANGE cbvTable1;
-	// // para1: 描述符表的类型
-	// // para2: 表中描述符的数量
-	// // para3: 将这段描述符区域绑定至此基址着色器寄存器
-	// cbvTable1.Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 1);
-	//
-	// // para1: 描述符区域的数量
-	// // para2: 指向描述符区域数组的指针
-	// slotRootParameter[0].InitAsDescriptorTable(1, &cbvTable0);
-	// slotRootParameter[1].InitAsDescriptorTable(1, &cbvTable1);
+	const CD3DX12_STATIC_SAMPLER_DESC linearWrap(
+			2, // shaderRegister
+			D3D12_FILTER_MIN_MAG_MIP_LINEAR, // filter 线性过滤
+			D3D12_TEXTURE_ADDRESS_MODE_WRAP, // addressU
+			D3D12_TEXTURE_ADDRESS_MODE_WRAP, // addressV
+			D3D12_TEXTURE_ADDRESS_MODE_WRAP); // addressW
 
-	slotRootParameter[0].InitAsConstantBufferView(0);
-	slotRootParameter[1].InitAsConstantBufferView(1);
-	slotRootParameter[2].InitAsConstantBufferView(2);
-	// slotRootParameter[2].InitAsConstantBufferView(2);
+	const CD3DX12_STATIC_SAMPLER_DESC linearClamp(
+			3, // shaderRegister
+			D3D12_FILTER_MIN_MAG_MIP_LINEAR, // filter
+			D3D12_TEXTURE_ADDRESS_MODE_CLAMP, // addressU
+			D3D12_TEXTURE_ADDRESS_MODE_CLAMP, // addressV
+			D3D12_TEXTURE_ADDRESS_MODE_CLAMP); // addressW
 
+	const CD3DX12_STATIC_SAMPLER_DESC anisotropicWrap(
+			4, // shaderRegister
+			D3D12_FILTER_ANISOTROPIC, // filter
+			D3D12_TEXTURE_ADDRESS_MODE_WRAP, // addressU
+			D3D12_TEXTURE_ADDRESS_MODE_WRAP, // addressV
+			D3D12_TEXTURE_ADDRESS_MODE_WRAP, // addressW
+			0.0f, // mipLODBias mipmap层级的偏置值
+			8); // maxAnisotropy 最大各向异性值
+
+	const CD3DX12_STATIC_SAMPLER_DESC anisotropicClamp(
+			5, // shaderRegister
+			D3D12_FILTER_ANISOTROPIC, // filter
+			D3D12_TEXTURE_ADDRESS_MODE_CLAMP, // addressU
+			D3D12_TEXTURE_ADDRESS_MODE_CLAMP, // addressV
+			D3D12_TEXTURE_ADDRESS_MODE_CLAMP, // addressW
+			0.0f, // mipLODBias
+			8); // maxAnisotropy
+
+	return {
+		pointWrap, pointClamp,
+		linearWrap, linearClamp,
+		anisotropicWrap, anisotropicClamp
+	};
+}
+void BoxApp::BuildRootSignature() {
+	CD3DX12_DESCRIPTOR_RANGE texTable;
+	texTable.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0); // register t0
+	
+
+	CD3DX12_ROOT_PARAMETER slotRootParameter[4];
+
+	slotRootParameter[0].InitAsDescriptorTable(1, &texTable, D3D12_SHADER_VISIBILITY_PIXEL);
+	slotRootParameter[1].InitAsConstantBufferView(0); // register b0
+	slotRootParameter[2].InitAsConstantBufferView(1); // register b1
+	slotRootParameter[3].InitAsConstantBufferView(2); // register b2
+	// slotRootParameter[0].InitAsShaderResourceView(0);
+
+	auto staticSamplers = GetStaticSamplers(); // register s0 ~ s6
 
 	// 根签名是根参数数组
-	CD3DX12_ROOT_SIGNATURE_DESC rootSigDesc(3, slotRootParameter, 0, nullptr,
-		D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
+	CD3DX12_ROOT_SIGNATURE_DESC rootSigDesc(4, slotRootParameter,
+			(UINT)staticSamplers.size(), staticSamplers.data(),
+			D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
 
+	// 创建具有4个槽位的根签名,第一个指向含有单个着色器资源视图的描述符表,其它三个各指向一个常量缓冲区视图
 	ComPtr<ID3DBlob> serializedRootSig = nullptr;
 	ComPtr<ID3DBlob> errorBlob = nullptr;
-	// Direct3D 12规定,必须先将根签名的描述布局进行序列化处理,待其转换为以 ID3DBlob 接口表示的序列化数据格式后,才可以将它传入 CreateRootSignature 方法
 	HRESULT hr = D3D12SerializeRootSignature(&rootSigDesc, D3D_ROOT_SIGNATURE_VERSION_1,
-		serializedRootSig.GetAddressOf(), errorBlob.GetAddressOf());
+			serializedRootSig.GetAddressOf(), errorBlob.GetAddressOf());
 
-	if (errorBlob != nullptr)
-	{
-		OutputDebugStringA((char*)errorBlob->GetBufferPointer());
+	if (errorBlob != nullptr) {
+		::OutputDebugStringA((char *)errorBlob->GetBufferPointer());
 	}
 	ThrowIfFailed(hr);
 
 	ThrowIfFailed(md3dDevice->CreateRootSignature(
-		0,
-		serializedRootSig->GetBufferPointer(),
-		serializedRootSig->GetBufferSize(),
-		IID_PPV_ARGS(&mRootSignature)));
+			0,
+			serializedRootSig->GetBufferPointer(),
+			serializedRootSig->GetBufferSize(),
+			IID_PPV_ARGS(mRootSignature.GetAddressOf())));
 }
 
 void BoxApp::BuildShadersAndInputLayout()
@@ -525,11 +559,10 @@ void BoxApp::BuildShadersAndInputLayout()
 	mShaders["standardVS"] = d3dUtil::CompileShader(L"Shaders\\color.hlsl", nullptr, "VS", "vs_5_1");
 	mShaders["opaquePS"] = d3dUtil::CompileShader(L"Shaders\\color.hlsl", nullptr, "PS", "ps_5_1");
 	// LPCSTR SemanticName; UINT SemanticIndex; DXGI_FORMAT Format; UINT InputSlot; UINT AlignedByteOffset; D3D12_INPUT_CLASSIFICATION InputSlotClass; UINT InstanceDataStepRate; D3D12_INPUT_ELEMENT_DESC;
-	mInputLayout = // 顶点插槽是0
-	{
+	mInputLayout = {
 		{ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
 		{ "NORMAL", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-				// { "COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+		{ "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 24, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
 	};
 }
 
@@ -552,7 +585,6 @@ void BoxApp::BuildPSO()
 		mShaders["opaquePS"]->GetBufferSize()
 	};
 	opaquePsoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
-	opaquePsoDesc.RasterizerState.FillMode = D3D12_FILL_MODE_SOLID;
 	opaquePsoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
 	opaquePsoDesc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
 	opaquePsoDesc.SampleMask = UINT_MAX;
@@ -578,124 +610,6 @@ void BoxApp::BuildFrameResources()
 		mFrameResources.push_back(std::make_unique<FrameResource>(md3dDevice.Get(), 1, (UINT)mAllRitems.size(), mMaterials.size()));
 	}
 }
-
-// void BoxApp::BuildShapeGeometry()
-// {
-// 	GeometryGenerator geoGen;
-// 	GeometryGenerator::MeshData box = geoGen.CreateBox(1.5f, 0.5f, 1.5f, 3);
-// 	GeometryGenerator::MeshData grid = geoGen.CreateGrid(20.0f, 30.0f, 60, 40);
-// 	GeometryGenerator::MeshData sphere = geoGen.CreateSphere(0.5f, 20, 20);
-// 	GeometryGenerator::MeshData cylinder = geoGen.CreateCylinder(0.5f, 0.3f, 3.0f, 20, 20);
-//
-// 	// 将所有的几何体数据都合并到一对大的顶点/索引缓冲区中
-// 	// 以此来定义每个子网格数据在缓冲区中所占的范围
-//
-// 	// 对合并顶点缓冲区中每个物体的顶点偏移量进行缓存
-// 	UINT boxVertexOffset = 0;
-// 	UINT gridVertexOffset = (UINT)box.Vertices.size();
-// 	UINT sphereVertexOffset = gridVertexOffset + (UINT)grid.Vertices.size();
-// 	UINT cylinderVertexOffset = sphereVertexOffset + (UINT)sphere.Vertices.size();
-//
-// 	// 对合并索引缓存区中每个物体的起始索引进行缓存
-// 	UINT boxIndexOffset = 0;
-// 	UINT gridIndexOffset = (UINT)box.Indices32.size();
-// 	UINT sphereIndexOffset = gridIndexOffset + (UINT)grid.Indices32.size();
-// 	UINT cylinderIndexOffset = sphereIndexOffset + (UINT)sphere.Indices32.size();
-//
-// 	// 定义的多个SubmeshGeometry结构体包含了顶点/索引缓冲区内不同几何体的子网格数据
-//
-// 	SubmeshGeometry boxSubmesh;
-// 	boxSubmesh.IndexCount = (UINT)box.Indices32.size();
-// 	boxSubmesh.StartIndexLocation = boxIndexOffset;
-// 	boxSubmesh.BaseVertexLocation = boxVertexOffset;
-//
-// 	SubmeshGeometry gridSubmesh;
-// 	gridSubmesh.IndexCount = (UINT)grid.Indices32.size();
-// 	gridSubmesh.StartIndexLocation = gridIndexOffset;
-// 	gridSubmesh.BaseVertexLocation = gridVertexOffset;
-//
-// 	SubmeshGeometry sphereSubmesh;
-// 	sphereSubmesh.IndexCount = (UINT)sphere.Indices32.size();
-// 	sphereSubmesh.StartIndexLocation = sphereIndexOffset;
-// 	sphereSubmesh.BaseVertexLocation = sphereVertexOffset;
-//
-// 	SubmeshGeometry cylinderSubmesh;
-// 	cylinderSubmesh.IndexCount = (UINT)cylinder.Indices32.size();
-// 	cylinderSubmesh.StartIndexLocation = cylinderIndexOffset;
-// 	cylinderSubmesh.BaseVertexLocation = cylinderVertexOffset;
-//
-// 	// 提取所有的顶点元素,再将所有网格的顶点装进一个顶点缓冲区
-//
-// 	auto totalVertexCount =
-// 		box.Vertices.size() +
-// 		grid.Vertices.size() +
-// 		sphere.Vertices.size() +
-// 		cylinder.Vertices.size();
-//
-// 	std::vector<Vertex> vertices(totalVertexCount);
-//
-// 	UINT k = 0;
-// 	for (size_t i = 0; i < box.Vertices.size(); ++i, ++k)
-// 	{
-// 		vertices[k].Pos = box.Vertices[i].Position;
-// 		vertices[k].Color = XMFLOAT4(DirectX::Colors::DarkGreen);
-// 	}
-//
-// 	for (size_t i = 0; i < grid.Vertices.size(); ++i, ++k)
-// 	{
-// 		vertices[k].Pos = grid.Vertices[i].Position;
-// 		vertices[k].Color = XMFLOAT4(DirectX::Colors::Orange);
-// 	}
-//
-// 	for (size_t i = 0; i < sphere.Vertices.size(); ++i, ++k)
-// 	{
-// 		vertices[k].Pos = sphere.Vertices[i].Position;
-// 		vertices[k].Color = XMFLOAT4(DirectX::Colors::Crimson);
-// 	}
-//
-// 	for (size_t i = 0; i < cylinder.Vertices.size(); ++i, ++k)
-// 	{
-// 		vertices[k].Pos = cylinder.Vertices[i].Position;
-// 		vertices[k].Color = XMFLOAT4(DirectX::Colors::SteelBlue);
-// 	}
-//
-// 	std::vector<std::uint16_t> indices;
-// 	indices.insert(indices.end(), std::begin(box.GetIndices16()), std::end(box.GetIndices16()));
-// 	indices.insert(indices.end(), std::begin(grid.GetIndices16()), std::end(grid.GetIndices16()));
-// 	indices.insert(indices.end(), std::begin(sphere.GetIndices16()), std::end(sphere.GetIndices16()));
-// 	indices.insert(indices.end(), std::begin(cylinder.GetIndices16()), std::end(cylinder.GetIndices16()));
-//
-// 	const UINT vbByteSize = (UINT)vertices.size() * sizeof(Vertex);
-// 	const UINT ibByteSize = (UINT)indices.size() * sizeof(std::uint16_t);
-//
-// 	auto geo = std::make_unique<MeshGeometry>();
-// 	geo->Name = "shapeGeo";
-//
-// 	ThrowIfFailed(D3DCreateBlob(vbByteSize, &geo->VertexBufferCPU)); // 为顶点分配内存空间
-// 	CopyMemory(geo->VertexBufferCPU->GetBufferPointer(), vertices.data(), vbByteSize); // 顶点内存副本
-//
-// 	ThrowIfFailed(D3DCreateBlob(ibByteSize, &geo->IndexBufferCPU));
-// 	CopyMemory(geo->IndexBufferCPU->GetBufferPointer(), indices.data(), ibByteSize);
-//
-// 	geo->VertexBufferGPU = d3dUtil::CreateDefaultBuffer(md3dDevice.Get(), // 将顶点传到GPU默认堆
-// 		mCommandList.Get(), vertices.data(), vbByteSize, geo->VertexBufferUploader);
-//
-// 	geo->IndexBufferGPU = d3dUtil::CreateDefaultBuffer(md3dDevice.Get(),
-// 		mCommandList.Get(), indices.data(), ibByteSize, geo->IndexBufferUploader);
-//
-// 	geo->VertexByteStride = sizeof(Vertex);
-// 	geo->VertexBufferByteSize = vbByteSize;
-// 	geo->IndexFormat = DXGI_FORMAT_R16_UINT;
-// 	geo->IndexBufferByteSize = ibByteSize;
-//
-// 	geo->DrawArgs["box"] = boxSubmesh;
-// 	geo->DrawArgs["grid"] = gridSubmesh;
-// 	geo->DrawArgs["sphere"] = sphereSubmesh;
-// 	geo->DrawArgs["cylinder"] = cylinderSubmesh;
-// 	// 修改 mGeometries[geo->Name],将几个几何体的顶点和索引合并传到GPU, geo->VertexBufferUploader,
-// 	// 在CPU也有内存副本 geo->VertexBufferCPU
-// 	mGeometries[geo->Name] = std::move(geo);
-// }
 
 void BoxApp::BuildShapeGeometry1() {
 	GeometryGenerator geoGen;
@@ -725,6 +639,7 @@ void BoxApp::BuildShapeGeometry1() {
 	boxSubmesh.IndexCount = (UINT)box.Indices32.size();
 	boxSubmesh.StartIndexLocation = boxIndexOffset;
 	boxSubmesh.BaseVertexLocation = boxVertexOffset;
+
 
 	SubmeshGeometry gridSubmesh;
 	gridSubmesh.IndexCount = (UINT)grid.Indices32.size();
@@ -758,21 +673,25 @@ void BoxApp::BuildShapeGeometry1() {
 	for (size_t i = 0; i < box.Vertices.size(); ++i, ++k) {
 		vertices[k].Pos = box.Vertices[i].Position;
 		vertices[k].Normal = box.Vertices[i].Normal;
+		vertices[k].UV0 = box.Vertices[i].TexC;
 	}
 
 	for (size_t i = 0; i < grid.Vertices.size(); ++i, ++k) {
 		vertices[k].Pos = grid.Vertices[i].Position;
 		vertices[k].Normal = grid.Vertices[i].Normal;
+		vertices[k].UV0 = grid.Vertices[i].TexC;
 	}
 
 	for (size_t i = 0; i < sphere.Vertices.size(); ++i, ++k) {
 		vertices[k].Pos = sphere.Vertices[i].Position;
 		vertices[k].Normal = sphere.Vertices[i].Normal;
+		vertices[k].UV0 = sphere.Vertices[i].TexC;
 	}
 
 	for (size_t i = 0; i < cylinder.Vertices.size(); ++i, ++k) {
 		vertices[k].Pos = cylinder.Vertices[i].Position;
 		vertices[k].Normal = cylinder.Vertices[i].Normal;
+		vertices[k].UV0 = cylinder.Vertices[i].TexC;
 	}
 
 	std::vector<std::uint16_t> indices;
@@ -902,57 +821,6 @@ void BoxApp::BuildRenderItems()
 		mOpaqueRitems.push_back(e.get());
 }
 
-// void BoxApp::BuildLandGeometry() {
-// 	GeometryGenerator genGen;
-// 	GeometryGenerator::MeshData grid = genGen.CreateGrid(160.0f, 160.0f, 50, 50);
-//
-// 	std::vector<Vertex> vertices(grid.Vertices.size());
-// 	for (size_t i = 0; i < grid.Vertices.size(); ++i) {
-// 		XMFLOAT3 &p = grid.Vertices[i].Position;
-// 		vertices[i].Pos = p;
-// 		vertices[i].Pos.y = GetHillsHeight(p.x, p.z);
-//
-// 		if (vertices[i].Pos.y < -10.0f)
-// 			vertices[i].Color = XMFLOAT4(1.0f, 0.96f, 0.62f, 1.0f);
-// 		else if (vertices[i].Pos.y < 5.0f)
-// 			vertices[i].Color = XMFLOAT4(0.48f, 0.77f, 0.46f, 1.0f);
-// 		else if (vertices[i].Pos.y < 12.0f)
-// 			vertices[i].Color = XMFLOAT4(0.1f, 0.48f, 0.19f, 1.0f);
-// 		else if (vertices[i].Pos.y < 20.0f)
-// 			vertices[i].Color = XMFLOAT4(0.45f, 0.39f, 0.34f, 1.0f);
-// 		else 
-// 			vertices[i].Color = XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f);
-//
-// 		const UINT vbByteSize = (UINT)vertices.size() * sizeof(Vertex);
-// 		std::vector<std::uint16_t> indices = grid.GetIndices16();
-// 		const UINT ibByteSize = (UINT)indices.size() * sizeof(std::uint16_t);
-// 		auto geo = std::make_unique<MeshGeometry>();
-// 		geo->Name = "landGeo";
-// 		// vertex to CPU Mem
-// 		ThrowIfFailed(D3DCreateBlob(vbByteSize, &geo->VertexBufferCPU));
-// 		CopyMemory(geo->VertexBufferCPU->GetBufferPointer(), vertices.data(), vbByteSize);
-// 		// index to CPU Mem
-// 		ThrowIfFailed(D3DCreateBlob(ibByteSize, &geo->IndexBufferCPU));
-// 		CopyMemory(geo->IndexBufferCPU->GetBufferPointer(), indices.data(), ibByteSize);
-//
-// 		// create GPU Mem
-// 		geo->VertexBufferGPU = d3dUtil::CreateDefaultBuffer(md3dDevice.Get(), mCommandList.Get(), vertices.data(), vbByteSize, geo->VertexBufferUploader);
-// 		geo->IndexBufferGPU = d3dUtil::CreateDefaultBuffer(md3dDevice.Get(), mCommandList.Get(), indices.data(), ibByteSize, geo->IndexBufferUploader);
-//
-// 		geo->VertexByteStride = sizeof(Vertex);
-// 		geo->VertexBufferByteSize = vbByteSize;
-// 		geo->IndexFormat = DXGI_FORMAT_R16_UINT;
-// 		geo->IndexBufferByteSize = ibByteSize;
-//
-// 		SubmeshGeometry subMesh;
-// 		subMesh.IndexCount = (UINT)indices.size();
-// 		subMesh.StartIndexLocation = 0;
-// 		subMesh.BaseVertexLocation = 0;
-// 		geo->DrawArgs["grid"] = subMesh;
-// 		mGeometries["landGeo"] = std::move(geo);
-// 	}
-// }
-
 float BoxApp::GetHillsHeight(float x, float z) const {
 	return 0.3f * (z * sinf(0.1f * x) + x * cosf(0.1f * z));
 }
@@ -1016,6 +884,8 @@ void BoxApp::BuildMaterials() {
 	grass->DiffuseAlbedo = XMFLOAT4(0.2f, 0.6f, 0.2f, 1.0f);
 	grass->FresnelR0 = XMFLOAT3(0.01f, 0.01f, 0.01f);
 	grass->Roughness = 0.125f;
+	grass->DiffuseSrvHeapIndex = 0;
+
 
 	// 当前这种水的材质定义不好
 	auto water = std::make_unique<Material>();
@@ -1024,8 +894,21 @@ void BoxApp::BuildMaterials() {
 	water->DiffuseAlbedo = XMFLOAT4(0.0f, 0.2f, 0.6f, 1.0f);
 	water->FresnelR0 = XMFLOAT3(0.1f, 0.1f, 0.1f);
 	water->Roughness = 0.0f;
+	water->DiffuseSrvHeapIndex = 0;
 
 	// 将材质数据存放在系统内存之中,为了GPU能够在着色器中访问,还需复制到常量缓冲区中
 	mMaterials["grass"] = std::move(grass);
 	mMaterials["water"] = std::move(water);
+}
+
+void BoxApp::LoadTextures() {
+	auto woodCrateTex = std::make_unique<Texture>();
+	woodCrateTex->Name = "woodCrateTex";
+	woodCrateTex->Filename = L"Textures/WoodCrate01.dds";
+	// 上传GPU
+	ThrowIfFailed(DirectX::CreateDDSTextureFromFile12(md3dDevice.Get(),
+			mCommandList.Get(), woodCrateTex->Filename.c_str(),
+			woodCrateTex->Resource, woodCrateTex->UploadHeap));
+
+	mTextures[woodCrateTex->Name] = std::move(woodCrateTex);
 }
