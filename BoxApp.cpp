@@ -140,12 +140,13 @@ void BoxApp::UpdateMaterialCBs(const GameTimer &gt) {
 	for (auto &e : mMaterials) {
 		Material *mat = e.second.get();
 		if (mat->NumFramesDirty > 0) {
-			XMMATRIX mTransform = XMLoadFloat4x4(&mat->MatTransform);
+			XMMATRIX matTransform = XMLoadFloat4x4(&mat->MatTransform);
 
 			MaterialConstants matConstants;
 			matConstants.DiffuseAlbedo = mat->DiffuseAlbedo;
 			matConstants.FresnelR0 = mat->FresnelR0;
 			matConstants.Roughness = mat->Roughness;
+			XMStoreFloat4x4(&matConstants.MatTransform, XMMatrixTranspose(matTransform));
 
 			currMaterialCB->CopyData(mat->MatCBIndex, matConstants);
 
@@ -262,7 +263,7 @@ void BoxApp::DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const std::vect
 
 		CD3DX12_GPU_DESCRIPTOR_HANDLE tex(mCbvHeap->GetGPUDescriptorHandleForHeapStart());
 		// BuildRenderItems()中设置了Mat,struct Material内含有DiffuseSrvHeapIndex
-		tex.Offset(ri->Mat->DiffuseSrvHeapIndex, mCbvSrvDescriptorSize);
+		// tex.Offset(ri->Mat->DiffuseSrvHeapIndex, mCbvSrvDescriptorSize);
 
 		cmdList->SetGraphicsRootDescriptorTable(0, tex);
 
@@ -324,7 +325,7 @@ void BoxApp::BuildDescriptorHeaps()
 
 	// 为每个帧资源中的每一个物体都创建一个CBV描述符
 	// 为每个帧资源的渲染过程CBV而+1
-	UINT numDescriptors = (objCount + 1) * gNumFrameResources + 1;
+	UINT numDescriptors = (objCount + 1) * gNumFrameResources;
 
 	// 偏移到过程常量
 	mPassCbvOffset = objCount * gNumFrameResources;
@@ -336,11 +337,6 @@ void BoxApp::BuildDescriptorHeaps()
 	cbvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
 	cbvHeapDesc.NodeMask = 0;
 	ThrowIfFailed(md3dDevice->CreateDescriptorHeap(&cbvHeapDesc, IID_PPV_ARGS(&mCbvHeap)));
-
-	// 创建SRV堆
-
-	// Fill out the heap with actual descriptors.
-	
 }
 
 // 改的还是 cbvHeap,每个帧资源中的每一个物体都需要一个对应的CBV描述符,将物体的常量缓冲区地址和偏移后的句柄绑定,	在描述符堆中的句柄按照字节偏移 (frameIndex * objCount + i) * mCbvSrvUavDescriptorSize  物体的常量缓存地址按照字节偏移 i * sizeof(ObjectConstants)
@@ -399,6 +395,24 @@ void BoxApp::BuildConstantBufferViews()
 		}
 	}
 
+	for (int frameIndex = 0; frameIndex < gNumFrameResources; ++frameIndex) {
+		auto woodCrateTex = mTextures["woodCrateTex"]->Resource;
+		int heapIndex = objCount * gNumFrameResources + frameIndex; // heapIndex = objCount * gNumFrameResources + frameIndex
+		auto handle = CD3DX12_CPU_DESCRIPTOR_HANDLE(mCbvHeap->GetCPUDescriptorHandleForHeapStart());
+		handle.Offset(heapIndex, mCbvSrvUavDescriptorSize);
+
+		D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+		// 提供方法,可以将采样时所返回的纹理向量中的分量进行重新排序
+		srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+		srvDesc.Format = woodCrateTex->GetDesc().Format;
+		srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+		srvDesc.Texture2D.MostDetailedMip = 0; // 此视图中图像细节最详尽的mipmap层级的索引
+		srvDesc.Texture2D.MipLevels = woodCrateTex->GetDesc().MipLevels; // 此视图的mipmap层级数量,以MostDetailedMip为起始值
+		srvDesc.Texture2D.ResourceMinLODClamp = 1.0f; // 可以访问的最小mipmap层级
+
+		md3dDevice->CreateShaderResourceView(woodCrateTex.Get(), &srvDesc, handle);
+	}
+
 	UINT passCBByteSize = d3dUtil::CalcConstantBufferByteSize(sizeof(PassConstants));
 
 	// 最后3个描述符依次是每个帧资源的渲染过程CBV
@@ -419,22 +433,7 @@ void BoxApp::BuildConstantBufferViews()
 		md3dDevice->CreateConstantBufferView(&cbvDesc, handle);
 	}
 
-	for (int frameIndex = 0; frameIndex < gNumFrameResources; ++frameIndex) {
-
-		auto woodCrateTex = mTextures["woodCrateTex"]->Resource;
-		CD3DX12_CPU_DESCRIPTOR_HANDLE hDescriptor(mCbvHeap->GetCPUDescriptorHandleForHeapStart());
-		auto heapIndex = frameIndex;
-		D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
-		// 提供方法,可以将采样时所返回的纹理向量中的分量进行重新排序
-		srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-		srvDesc.Format = woodCrateTex->GetDesc().Format;
-		srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
-		srvDesc.Texture2D.MostDetailedMip = 0; // 此视图中图像细节最详尽的mipmap层级的索引
-		srvDesc.Texture2D.MipLevels = woodCrateTex->GetDesc().MipLevels; // 此视图的mipmap层级数量,以MostDetailedMip为起始值
-		srvDesc.Texture2D.ResourceMinLODClamp = 1.0f; // 可以访问的最小mipmap层级
-
-		md3dDevice->CreateShaderResourceView(woodCrateTex.Get(), &srvDesc, hDescriptor);
-	}
+	
 }
 
 void BoxApp::BuildConstantBuffers()
@@ -516,6 +515,21 @@ std::array<const CD3DX12_STATIC_SAMPLER_DESC, 6> BoxApp::GetStaticSamplers() {
 		anisotropicWrap, anisotropicClamp
 	};
 }
+
+std::array<const CD3DX12_STATIC_SAMPLER_DESC, 1> BoxApp::GetStaticSamplers1() {
+	// 应用程序一般只会用到这些采样器的一部分
+	// 所以就将它们全部提前定义好,并作为根签名的一部分保留下来
+
+	const CD3DX12_STATIC_SAMPLER_DESC pointWrap(
+			0, // shaderRegister 着色器寄存器
+			D3D12_FILTER_MIN_MAG_MIP_POINT, // filter 过滤器类型 点过滤
+			D3D12_TEXTURE_ADDRESS_MODE_WRAP, // addressU U轴方向上所用的寻址模式 重复寻址模式
+			D3D12_TEXTURE_ADDRESS_MODE_WRAP, // addressV
+			D3D12_TEXTURE_ADDRESS_MODE_WRAP); // addressW
+
+	
+	return { pointWrap };
+}
 void BoxApp::BuildRootSignature() {
 	CD3DX12_DESCRIPTOR_RANGE texTable;
 	texTable.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0); // register t0
@@ -529,7 +543,7 @@ void BoxApp::BuildRootSignature() {
 	slotRootParameter[3].InitAsConstantBufferView(2); // register b2
 	// slotRootParameter[0].InitAsShaderResourceView(0);
 
-	auto staticSamplers = GetStaticSamplers(); // register s0 ~ s6
+	auto staticSamplers = GetStaticSamplers1(); // register s0 ~ s6
 
 	// 根签名是根参数数组
 	CD3DX12_ROOT_SIGNATURE_DESC rootSigDesc(4, slotRootParameter,
@@ -904,7 +918,7 @@ void BoxApp::BuildMaterials() {
 void BoxApp::LoadTextures() {
 	auto woodCrateTex = std::make_unique<Texture>();
 	woodCrateTex->Name = "woodCrateTex";
-	woodCrateTex->Filename = L"Textures/WoodCrate01.dds";
+	woodCrateTex->Filename = L"Textures/bricks.dds";
 	// 上传GPU
 	ThrowIfFailed(DirectX::CreateDDSTextureFromFile12(md3dDevice.Get(),
 			mCommandList.Get(), woodCrateTex->Filename.c_str(),

@@ -64,6 +64,7 @@ private:
 	void BuildConstantBufferViews();
 	void BuildConstantBuffers(); // 为 mObjectCB 分配空间,描述符存在 mCbvHeap 中
 	std::array<const CD3DX12_STATIC_SAMPLER_DESC, 6> GetStaticSamplers();
+	std::array<const CD3DX12_STATIC_SAMPLER_DESC, 1> GetStaticSamplers1();
 	void BuildRootSignature(); // 根签名指定了常量缓冲区绑定到哪个着色器寄存器
 	void BuildShadersAndInputLayout(); // 指定 VS, PS, mInputLayout(顶点结构体映射到VS的输入参数)
 	void BuildPSO(); // 为 mPSO 赋值

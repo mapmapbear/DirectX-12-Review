@@ -88,8 +88,8 @@ VertexOut VS(VertexIn vin) {
 	float4 posW = mul(float4(vin.PosL, 1.0f), gCBPerObject.gWorld);
 	// 转换到齐次裁剪空间
 	vout.PosH = mul(posW, gCBPass.gViewProj);
-	vout.PosW = posW;
-	vout.NormalW = mul(vin.NormalL, (float3x3)gCBPerObject.gWorld);
+	vout.PosW = posW.xyz;
+	vout.NormalW = mul(vin.NormalL, gCBPerObject.gWorld).xyz;
 	float4 UV = mul(float4(vin.UV0, 0.0f, 1.0f), gCBPerObject.gTexTransform);
 	vout.UV0 = mul(UV, gMatCBPass.gMatTransform).xy;
 	return vout;
