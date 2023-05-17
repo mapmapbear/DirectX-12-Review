@@ -4,6 +4,10 @@
 
 Visual Stadio 2022 X64
 
+## Release Log
+
+23/5/17 更新多张纹理 + 纹理动画
+
 
 
 ## BUG Log

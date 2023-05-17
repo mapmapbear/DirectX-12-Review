@@ -65,6 +65,7 @@ void BoxApp::OnResize()
 
 void BoxApp::Update(const GameTimer& gt)
 {
+	OnKeyboardInput(gt);
 	UpdateCamera(gt);
 	mCurrFrameResourceIndex = (mCurrFrameResourceIndex + 1) % gNumFrameResources;
 	mCurrFrameResources = mFrameResources[mCurrFrameResourceIndex].get();
@@ -203,17 +204,31 @@ void BoxApp::UpdateWaves(const GameTimer& gt) {
 	mWavesRitem->Geo->VertexBufferGPU = currWavesVB->Resource();
 }
 
+void BoxApp::OnKeyboardInput(const GameTimer &gt) {
+	if (GetAsyncKeyState('1') & 0x8000) {
+		mIsWireframe = true;
+		misTransparent = false;
+	} else if (GetAsyncKeyState('2') & 0x8000) {
+		misTransparent = true;
+		mIsWireframe = false;
+	} else {
+		mIsWireframe = false;
+		misTransparent = false;
+	}
+}
+
 void BoxApp::Draw(const GameTimer& gt)
 {
 	auto cmdListAlloc = mCurrFrameResources->CmdListAlloc;
 
 	ThrowIfFailed(cmdListAlloc->Reset());
 
-	// if (mIsWireframe)
-	// { // 设置顶点结构体; 说明有两个CBV,对应寄存器0,1; VS,PS; solid/wireframe
-	// 	ThrowIfFailed(mCommandList->Reset(cmdListAlloc.Get(), mPSOs["opaque_wireframe"].Get()));
-	// }
-	// else
+	if (mIsWireframe)
+	{ // 设置顶点结构体; 说明有两个CBV,对应寄存器0,1; VS,PS; solid/wireframe
+		ThrowIfFailed(mCommandList->Reset(cmdListAlloc.Get(), mPSOs["opaque_wireframe"].Get()));
+	} else if (misTransparent) {
+		ThrowIfFailed(mCommandList->Reset(cmdListAlloc.Get(), mPSOs["transparent"].Get()));
+	} else
 	{
 		ThrowIfFailed(mCommandList->Reset(cmdListAlloc.Get(), mPSOs["opaque"].Get()));
 	}
@@ -637,6 +652,7 @@ void BoxApp::BuildPSO()
 		mShaders["opaquePS"]->GetBufferSize()
 	};
 	opaquePsoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
+
 	opaquePsoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
 	opaquePsoDesc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
 	opaquePsoDesc.SampleMask = UINT_MAX;
@@ -651,13 +667,26 @@ void BoxApp::BuildPSO()
 	HRESULT removeReason = md3dDevice->GetDeviceRemovedReason();
 	ThrowIfFailed(md3dDevice->CreateGraphicsPipelineState(&opaquePsoDesc, IID_PPV_ARGS(&mPSOs["opaque"])));
 
-
-
 	// PSO for opaque wireframe objects
 
 	D3D12_GRAPHICS_PIPELINE_STATE_DESC opaqueWireframePsoDesc = opaquePsoDesc;
 	opaqueWireframePsoDesc.RasterizerState.FillMode = D3D12_FILL_MODE_WIREFRAME;
 	ThrowIfFailed(md3dDevice->CreateGraphicsPipelineState(&opaqueWireframePsoDesc, IID_PPV_ARGS(&mPSOs["opaque_wireframe"])));
+
+	D3D12_GRAPHICS_PIPELINE_STATE_DESC transparentPsoDesc = opaquePsoDesc;
+	D3D12_RENDER_TARGET_BLEND_DESC transparencyBlendDesc;
+	transparencyBlendDesc.BlendEnable = true;
+	transparencyBlendDesc.LogicOpEnable = false;
+	transparencyBlendDesc.SrcBlend = D3D12_BLEND_SRC_ALPHA;
+	transparencyBlendDesc.DestBlend = D3D12_BLEND_INV_SRC_ALPHA;
+	transparencyBlendDesc.BlendOp = D3D12_BLEND_OP_ADD;
+	transparencyBlendDesc.SrcBlendAlpha = D3D12_BLEND_ONE;
+	transparencyBlendDesc.DestBlendAlpha = D3D12_BLEND_ZERO;
+	transparencyBlendDesc.BlendOpAlpha = D3D12_BLEND_OP_ADD;
+	transparencyBlendDesc.LogicOp = D3D12_LOGIC_OP_NOOP;
+	transparencyBlendDesc.RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
+	transparentPsoDesc.BlendState.RenderTarget[0] = transparencyBlendDesc;
+	ThrowIfFailed(md3dDevice->CreateGraphicsPipelineState(&transparentPsoDesc, IID_PPV_ARGS(&mPSOs["transparent"])))
 }
 
 void BoxApp::BuildFrameResources()
