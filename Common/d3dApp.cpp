@@ -109,18 +109,23 @@ bool D3DApp::Initialize()
 		return false;
 
 	OnResize();
+	if (!InitImGui())
+		return false;
+	return true;
+}
 
-	//SetUp ImGui Context
+bool D3DApp::InitImGui() {
 	IMGUI_CHECKVERSION();
 	ImGui::CreateContext();
 	ImGuiIO &io = ImGui::GetIO();
 	(void)io;
 	ImGui::StyleColorsDark();
 	ImGui_ImplWin32_Init(mhMainWnd);
-	ImGui_ImplDX12_Init(md3dDevice.Get(), 3, DXGI_FORMAT_R8G8B8A8_UNORM, mImGUIHeap.Get() , mImGUIHeap.Get()->GetCPUDescriptorHandleForHeapStart(), mImGUIHeap.Get()->GetGPUDescriptorHandleForHeapStart());
-
+	ImGui_ImplDX12_Init(md3dDevice.Get(), 3, DXGI_FORMAT_R8G8B8A8_UNORM, mImGUIHeap.Get(),
+			mImGUIHeap->GetCPUDescriptorHandleForHeapStart(), mImGUIHeap->GetGPUDescriptorHandleForHeapStart());
 	return true;
 }
+
 
 void D3DApp::CreateRtvAndDsvDescriptorHeaps()
 {
