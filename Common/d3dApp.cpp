@@ -1,6 +1,8 @@
 ﻿#include "d3dApp.h"
 #include <windowsx.h>
 
+
+
 using Microsoft::WRL::ComPtr;
 using namespace std;
 using namespace DirectX;
@@ -108,6 +110,15 @@ bool D3DApp::Initialize()
 
 	OnResize();
 
+	//SetUp ImGui Context
+	IMGUI_CHECKVERSION();
+	ImGui::CreateContext();
+	ImGuiIO &io = ImGui::GetIO();
+	(void)io;
+	ImGui::StyleColorsDark();
+	ImGui_ImplWin32_Init(mhMainWnd);
+	ImGui_ImplDX12_Init(md3dDevice.Get(), 3, DXGI_FORMAT_R8G8B8A8_UNORM, mImGUIHeap.Get() , mImGUIHeap.Get()->GetCPUDescriptorHandleForHeapStart(), mImGUIHeap.Get()->GetGPUDescriptorHandleForHeapStart());
+
 	return true;
 }
 
@@ -130,6 +141,14 @@ void D3DApp::CreateRtvAndDsvDescriptorHeaps()
 	dsvHeapDesc.NodeMask = 0;
 	ThrowIfFailed(md3dDevice->CreateDescriptorHeap(
 		&dsvHeapDesc, IID_PPV_ARGS(mDsvHeap.GetAddressOf())));
+
+	D3D12_DESCRIPTOR_HEAP_DESC SrvHeapDesc;
+	SrvHeapDesc.NumDescriptors = 1;
+	SrvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+	SrvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+	SrvHeapDesc.NodeMask = 0;
+	ThrowIfFailed(md3dDevice->CreateDescriptorHeap(
+			&SrvHeapDesc, IID_PPV_ARGS(mImGUIHeap.GetAddressOf())));
 }
 
 void D3DApp::OnResize()
@@ -231,8 +250,12 @@ void D3DApp::OnResize()
 	mScissorRect = { 0,0,mClientWidth,mClientHeight };
 }
 
+extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
+
 LRESULT D3DApp::MsgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
+	if (ImGui_ImplWin32_WndProcHandler(hwnd, msg, wParam, lParam))
+		return true;
 	switch (msg)
 	{
 		// 窗口被激活或反激活时,WM_ACTIVATE被发送

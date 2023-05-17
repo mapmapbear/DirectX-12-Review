@@ -8,6 +8,11 @@
 #include "d3dUtil.h"
 #include "GameTimer.h"
 
+// include ImGui
+#include <imgui.h>
+#include <imgui_impl_dx12.h>
+#include <imgui_impl_win32.h>
+
 // 链接DirectX库
 #pragma comment(lib,"d3dcompiler.lib")
 #pragma comment(lib, "D3D12.lib")
@@ -109,7 +114,7 @@ protected:
 
 	Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> mRtvHeap; // RTV描述符堆
 	Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> mDsvHeap; // DSV描述符堆
-
+	Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> mImGUIHeap; // IMGUI_SRV描述符堆
 	D3D12_VIEWPORT mScreenViewport; // 视口
 	D3D12_RECT mScissorRect; // 裁剪矩形
 

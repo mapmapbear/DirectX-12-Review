@@ -53,6 +53,7 @@ private:
 	void UpdateCamera(const GameTimer& gt);
 	void UpdateWaves(const GameTimer &gt);
 	void OnKeyboardInput(const GameTimer &gt);
+	void DrawImGui();
 	void UpdateMaterialCBs(const GameTimer &gt);
 	virtual void Draw(const GameTimer& gt) override;
 	void DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const std::vector<RenderItem*>& ritems);

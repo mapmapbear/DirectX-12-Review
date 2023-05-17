@@ -217,6 +217,32 @@ void BoxApp::OnKeyboardInput(const GameTimer &gt) {
 	}
 }
 
+void BoxApp::DrawImGui() {
+	ImGui_ImplDX12_NewFrame();
+	ImGui_ImplWin32_NewFrame();
+	ImGui::NewFrame();
+
+	bool show_demo_window = true;
+	if (show_demo_window)
+		ImGui::ShowDemoWindow(&show_demo_window);
+	{
+		static int counter = 0;
+		ImGui::Begin("Hello, world!"); // Create a window called "Hello, world!" and append into it.
+		ImGui::Text("This is some useful text."); // Display some text (you can use a format strings too)
+		ImGui::Checkbox("Demo Window", &show_demo_window); // Edit bools storing our window open/close state
+		ImGui::SliderFloat("float", &mPhi, 0.1f, 1.0f); // Edit 1 float using a slider from 0.0f to 1.0f
+		if (ImGui::Button("Button")) // Buttons return true when clicked (most widgets return true when edited/activated)
+			counter++;
+		ImGui::SameLine();
+		ImGui::Text("counter = %d", counter);
+		ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
+		ImGui::End();
+	}
+	mCommandList->SetDescriptorHeaps(1, mImGUIHeap.GetAddressOf());
+	ImGui::Render();
+	ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), mCommandList.Get());
+}
+
 void BoxApp::Draw(const GameTimer& gt)
 {
 	auto cmdListAlloc = mCurrFrameResources->CmdListAlloc;
@@ -247,9 +273,7 @@ void BoxApp::Draw(const GameTimer& gt)
 	// 设置 mCbvHeap,里面为每个帧资源的每一个物体和过程常量设了一个描述符,
 	// 将帧资源中的物体缓存和过程缓存使用 index*bytesize,通过handle偏移绑定,
 	// 物体常量和过程常量缓存通过CopyData()赋值
-	
 	// 其实PSO中有根签名
-
 	ID3D12DescriptorHeap *descriptorHeaps1[] = {mCbvHeap.Get() };
 	mCommandList->SetDescriptorHeaps(_countof(descriptorHeaps1), descriptorHeaps1);
 	mCommandList->SetGraphicsRootSignature(mRootSignature.Get());
@@ -259,9 +283,11 @@ void BoxApp::Draw(const GameTimer& gt)
 
 	DrawRenderItems(mCommandList.Get(), mOpaqueRitems);
 
-	mCommandList->ResourceBarrier(1, get_rvalue_ptr(CD3DX12_RESOURCE_BARRIER::Transition(CurrentBackBuffer(),
-		D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT)));
-
+	mCommandList->ResourceBarrier(1, get_rvalue_ptr(CD3DX12_RESOURCE_BARRIER::Transition(CurrentBackBuffer(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT)));
+	if (!mIsWireframe || !misTransparent) {
+		// ThrowIfFailed(mCommandList->Reset(cmdListAlloc.Get(), mPSOs["opaque"].Get()));
+		DrawImGui();
+	}
 	ThrowIfFailed(mCommandList->Close());
 
 	ID3D12CommandList* cmdsLists[] = { mCommandList.Get() };
@@ -684,7 +710,7 @@ void BoxApp::BuildPSO()
 	transparencyBlendDesc.DestBlendAlpha = D3D12_BLEND_ZERO;
 	transparencyBlendDesc.BlendOpAlpha = D3D12_BLEND_OP_ADD;
 	transparencyBlendDesc.LogicOp = D3D12_LOGIC_OP_NOOP;
-	transparencyBlendDesc.RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
+	transparencyBlendDesc.RenderTargetWriteMask = 0;
 	transparentPsoDesc.BlendState.RenderTarget[0] = transparencyBlendDesc;
 	ThrowIfFailed(md3dDevice->CreateGraphicsPipelineState(&transparentPsoDesc, IID_PPV_ARGS(&mPSOs["transparent"])))
 }
