@@ -48,6 +48,7 @@ public:
 private:
 	virtual void OnResize() override;
 	virtual void Update(const GameTimer& gt) override;
+	void UpdateImGui(const GameTimer &gt);
 	void UpdateObjectCBs(const GameTimer& gt);
 	void UpdateMainPassCB(const GameTimer& gt);
 	void UpdateCamera(const GameTimer& gt);

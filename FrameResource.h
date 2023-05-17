@@ -9,7 +9,6 @@
 
 struct ObjectConstants
 {
-	// DirectX::XMFLOAT4X4 WorldViewProj = MathHelper::Identity4x4();
 	DirectX::XMFLOAT4X4 World = MathHelper::Identity4x4();
 	DirectX::XMFLOAT4X4 TexTransform = MathHelper::Identity4x4();
 };
@@ -32,6 +31,8 @@ struct PassConstants
 	float DeltaTime = 0.0f;
 	DirectX::XMFLOAT4 AmbientLight = { 0.0f, 0.0f, 0.0f, 1.0f };
 	Light Lights[MaxLights];
+	DirectX::XMFLOAT4 color;
+	uint32_t useCustomColor;
 };
 
 struct Vertex

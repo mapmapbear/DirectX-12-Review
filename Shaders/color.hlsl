@@ -54,6 +54,8 @@ struct cbPass {
 	float gDeltaTime;
 	float4 gAmbientLight;
 	Light gLights[MaxLights];
+	uint g_UseCustomColor;
+	vector g_Color;
 };
 ConstantBuffer<cbPass> gCBPass : register(b1);
 
@@ -120,5 +122,6 @@ float4 PS(VertexOut pin) :
 	float4 litColor = ambient + directLight;
 	litColor.a = diffuseAlbedo.a;
 	// return litColor;
-	return gDiffuseMap.Sample(gsamLinear, pin.UV0.yx);
+	// return gDiffuseMap.Sample(gsamLinear, pin.UV0.yx);
+	return gCBPass.g_UseCustomColor ? litColor : float4(1.0, 1.0, 0.0, 1.0);
 }

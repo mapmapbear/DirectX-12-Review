@@ -76,11 +76,85 @@ void BoxApp::Update(const GameTimer& gt)
 		WaitForSingleObject(eventHandle, INFINITE);
 		CloseHandle(eventHandle);
 	}
+	UpdateImGui(gt);
 	AnimateMaterial(gt);
 	UpdateObjectCBs(gt);
 	UpdateMainPassCB(gt);
 	UpdateMaterialCBs(gt);
 	UpdateWaves(gt);
+}
+
+uint32_t useColorState = 0.0;
+DirectX::XMFLOAT4 globalColor = XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f);
+
+void BoxApp::UpdateImGui(const GameTimer &gt) {
+	ImGui_ImplDX12_NewFrame();
+	ImGui_ImplWin32_NewFrame();
+	ImGui::NewFrame();
+
+	ImGuiIO &io = ImGui::GetIO();
+	static float tx = 0.0f, ty = 0.0f, phi = 0.0f, theta = 0.0f, scale = 1.0f, fov = XM_PIDIV2;
+	static bool animateCube = true, customColor = false;
+	if (animateCube) {
+		phi += 0.3f * gt.DeltaTime(), theta += 0.37f * gt.DeltaTime();
+		phi = XMScalarModAngle(phi);
+		theta = XMScalarModAngle(theta);
+	}
+	if (ImGui::Begin("Use ImGui")) {
+		ImGui::Checkbox("Animate Cube", &animateCube);
+		ImGui::SameLine(0.0f, 25.0f);
+		if (ImGui::Button("Reset Params")) {
+			tx = ty = phi = theta = 0.0f;
+			scale = 1.0f;
+			fov = XM_PIDIV2;
+		}
+		ImGui::SliderFloat("Scale", &scale, 0.2f, 2.0f);
+	
+		ImGui::Text("Phi: %.2f degrees", XMConvertToDegrees(phi));
+		ImGui::SliderFloat("##1", &phi, -XM_PI, XM_PI, ""); // 不显示文字，但避免重复的标签
+		ImGui::Text("Theta: %.2f degrees", XMConvertToDegrees(theta));
+		ImGui::SliderFloat("##2", &theta, -XM_PI, XM_PI, "");
+	
+		ImGui::Text("Position: (%.1f, %.1f, 0.0)", tx, ty);
+	
+		ImGui::Text("FOV: %.2f degrees", XMConvertToDegrees(fov));
+		ImGui::SliderFloat("##3", &fov, XM_PIDIV4, XM_PI / 3 * 2, "");
+	
+		if (ImGui::Checkbox("Use Custom Color", &customColor)) {
+			useColorState = customColor;
+			// std::wstring s = std::to_wstring(useColorState);
+			// ::OutputDebugString(s.c_str());
+		}
+			
+		if (customColor) {
+			ImGui::ColorEdit3("Color", reinterpret_cast<float *>(&globalColor));
+		}
+	}
+	ImGui::End();
+	
+	// 不允许在操作UI时操作物体
+	if (!ImGui::IsAnyItemActive()) {
+		// 鼠标左键拖动平移
+		if (ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
+			tx += io.MouseDelta.x * 0.01f;
+			ty -= io.MouseDelta.y * 0.01f;
+		}
+		// 鼠标右键拖动旋转
+		else if (ImGui::IsMouseDragging(ImGuiMouseButton_Right)) {
+			phi -= io.MouseDelta.y * 0.01f;
+			theta -= io.MouseDelta.x * 0.01f;
+			phi = XMScalarModAngle(phi);
+			theta = XMScalarModAngle(theta);
+		}
+		// 鼠标滚轮缩放
+		else if (io.MouseWheel != 0.0f) {
+			scale += 0.02f * io.MouseWheel;
+			if (scale > 2.0f)
+				scale = 2.0f;
+			else if (scale < 0.2f)
+				scale = 0.2f;
+		}
+	}
 }
 
 void BoxApp::UpdateObjectCBs(const GameTimer& gt)
@@ -97,7 +171,6 @@ void BoxApp::UpdateObjectCBs(const GameTimer& gt)
 			XMStoreFloat4x4(&objConstants.World, XMMatrixTranspose(world));
 			XMStoreFloat4x4(&objConstants.TexTransform, XMMatrixTranspose(texTransform));
 			currObjectCB->CopyData(e->ObjCBIndex, objConstants);
-
 			e->NumFramesDirty--;
 		}
 	}
@@ -133,6 +206,11 @@ void BoxApp::UpdateMainPassCB(const GameTimer& gt) {
 	mMainPassCB.Lights[1].Strength = { 0.3f, 0.3f, 0.3f };
 	mMainPassCB.Lights[2].Direction = { 0.0f, -0.707f, -0.707f };
 	mMainPassCB.Lights[2].Strength = { 0.15f, 0.15f, 0.15f };
+
+	mMainPassCB.useCustomColor = useColorState;
+	std::wstring s = std::to_wstring(mMainPassCB.useCustomColor);
+	::OutputDebugString(s.c_str());
+	mMainPassCB.color = globalColor;
 
 	auto currPassCB = mCurrFrameResources->PassCB.get();
 	currPassCB->CopyData(0, mMainPassCB);
@@ -217,32 +295,6 @@ void BoxApp::OnKeyboardInput(const GameTimer &gt) {
 	}
 }
 
-void BoxApp::DrawImGui() {
-	ImGui_ImplDX12_NewFrame();
-	ImGui_ImplWin32_NewFrame();
-	ImGui::NewFrame();
-
-	bool show_demo_window = true;
-	if (show_demo_window)
-		ImGui::ShowDemoWindow(&show_demo_window);
-	{
-		static int counter = 0;
-		ImGui::Begin("Hello, world!"); // Create a window called "Hello, world!" and append into it.
-		ImGui::Text("This is some useful text."); // Display some text (you can use a format strings too)
-		ImGui::Checkbox("Demo Window", &show_demo_window); // Edit bools storing our window open/close state
-		ImGui::SliderFloat("float", &mPhi, 0.1f, 1.0f); // Edit 1 float using a slider from 0.0f to 1.0f
-		if (ImGui::Button("Button")) // Buttons return true when clicked (most widgets return true when edited/activated)
-			counter++;
-		ImGui::SameLine();
-		ImGui::Text("counter = %d", counter);
-		ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
-		ImGui::End();
-	}
-	mCommandList->SetDescriptorHeaps(1, mImGUIHeap.GetAddressOf());
-	ImGui::Render();
-	ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), mCommandList.Get());
-}
-
 void BoxApp::Draw(const GameTimer& gt)
 {
 	auto cmdListAlloc = mCurrFrameResources->CmdListAlloc;
@@ -259,12 +311,7 @@ void BoxApp::Draw(const GameTimer& gt)
 		ThrowIfFailed(mCommandList->Reset(cmdListAlloc.Get(), mPSOs["opaque"].Get()));
 	}
 
-	ImGui_ImplDX12_NewFrame();
-	ImGui_ImplWin32_NewFrame();
-	ImGui::NewFrame();
-
-	bool show_demo_window = true;
-	ImGui::ShowDemoWindow(&show_demo_window);
+	
 
 	ImGui::Render();
 
