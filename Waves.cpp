@@ -115,25 +115,25 @@ void Waves::Update(float dt) {
 		// Compute normals using finite difference scheme.
 		//
 		concurrency::parallel_for(1, mNumRows - 1, [this](int i)
-				//for(int i = 1; i < mNumRows - 1; ++i)
-				{
-					for (int j = 1; j < mNumCols - 1; ++j) {
-						float l = mCurrSolution[i * mNumCols + j - 1].y;
-						float r = mCurrSolution[i * mNumCols + j + 1].y;
-						float t = mCurrSolution[(i - 1) * mNumCols + j].y;
-						float b = mCurrSolution[(i + 1) * mNumCols + j].y;
-						mNormals[i * mNumCols + j].x = -r + l;
-						mNormals[i * mNumCols + j].y = 2.0f * mSpatialStep;
-						mNormals[i * mNumCols + j].z = b - t;
+		//for(int i = 1; i < mNumRows - 1; ++i)
+		{
+			for (int j = 1; j < mNumCols - 1; ++j) {
+				float l = mCurrSolution[i * mNumCols + j - 1].y;
+				float r = mCurrSolution[i * mNumCols + j + 1].y;
+				float t = mCurrSolution[(i - 1) * mNumCols + j].y;
+				float b = mCurrSolution[(i + 1) * mNumCols + j].y;
+				mNormals[i * mNumCols + j].x = -r + l;
+				mNormals[i * mNumCols + j].y = 2.0f * mSpatialStep;
+				mNormals[i * mNumCols + j].z = b - t;
 
-						XMVECTOR n = XMVector3Normalize(XMLoadFloat3(&mNormals[i * mNumCols + j]));
-						XMStoreFloat3(&mNormals[i * mNumCols + j], n);
+				XMVECTOR n = XMVector3Normalize(XMLoadFloat3(&mNormals[i * mNumCols + j]));
+				XMStoreFloat3(&mNormals[i * mNumCols + j], n);
 
-						mTangentX[i * mNumCols + j] = XMFLOAT3(2.0f * mSpatialStep, r - l, 0.0f);
-						XMVECTOR T = XMVector3Normalize(XMLoadFloat3(&mTangentX[i * mNumCols + j]));
-						XMStoreFloat3(&mTangentX[i * mNumCols + j], T);
-					}
-				});
+				mTangentX[i * mNumCols + j] = XMFLOAT3(2.0f * mSpatialStep, r - l, 0.0f);
+				XMVECTOR T = XMVector3Normalize(XMLoadFloat3(&mTangentX[i * mNumCols + j]));
+				XMStoreFloat3(&mTangentX[i * mNumCols + j], T);
+			}
+		});
 	}
 }
 

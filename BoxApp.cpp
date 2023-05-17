@@ -25,17 +25,17 @@ bool BoxApp::Initialize()
 		return 0;
 	mCbvSrvDescriptorSize = md3dDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 
-
+	mWaves = std::make_unique<Waves>(128, 128, 1.0f, 0.03f, 4.0f, 0.2f);
 	// 重置命令列表,准备初始化
 	ThrowIfFailed(mCommandList->Reset(mDirectCmdListAlloc.Get(), nullptr));
 	LoadTextures();
 
 	BuildRootSignature();
 	BuildShadersAndInputLayout();
+	BuildWavesGeometryBuffers();
 	BuildShapeGeometry1();
 	BuildMaterials();
 	BuildRenderItems();
-	BuildWavesGeometryBuffers();
 	BuildFrameResources();
 	BuildDescriptorHeaps();
 	BuildConstantBufferViews();
@@ -79,6 +79,7 @@ void BoxApp::Update(const GameTimer& gt)
 	UpdateObjectCBs(gt);
 	UpdateMainPassCB(gt);
 	UpdateMaterialCBs(gt);
+	UpdateWaves(gt);
 }
 
 void BoxApp::UpdateObjectCBs(const GameTimer& gt)
@@ -182,6 +183,24 @@ void BoxApp::UpdateWaves(const GameTimer& gt) {
 		mWaves->Disturb(i, j, r);
 	}
 	mWaves->Update(gt.DeltaTime());
+
+	auto currWavesVB = mCurrFrameResources->WavesVB.get();
+	for (int i = 0; i < mWaves->VertexCount(); ++i) {
+		Vertex v;
+
+		v.Pos = mWaves->Position(i);
+		v.Normal = mWaves->Normal(i);
+
+		// Derive tex-coords from position by
+		// mapping [-w/2,w/2] --> [0,1]
+		v.UV0.x = 0.5f + v.Pos.x / mWaves->Width();
+		v.UV0.y = 0.5f - v.Pos.z / mWaves->Depth();
+
+		currWavesVB->CopyData(i, v);
+	}
+
+	// Set the dynamic VB of the wave renderitem to the current frame VB.
+	mWavesRitem->Geo->VertexBufferGPU = currWavesVB->Resource();
 }
 
 void BoxApp::Draw(const GameTimer& gt)
@@ -343,7 +362,7 @@ void BoxApp::BuildDescriptorHeaps()
 	ThrowIfFailed(md3dDevice->CreateDescriptorHeap(&cbvHeapDesc, IID_PPV_ARGS(&mCbvHeap)));
 
 	D3D12_DESCRIPTOR_HEAP_DESC srvHeapDesc = {};
-	srvHeapDesc.NumDescriptors = 2;
+	srvHeapDesc.NumDescriptors = 3;
 	srvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
 	srvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
 	ThrowIfFailed(md3dDevice->CreateDescriptorHeap(&srvHeapDesc, IID_PPV_ARGS(&mSrvHeap)));
@@ -355,6 +374,7 @@ void BoxApp::BuildDescriptorHeaps()
 
 	auto woodCrateTex = mTextures["woodCrateTex"]->Resource;
 	auto woodCrateTex2 = mTextures["woodCrateTex2"]->Resource;
+	auto waterTex = mTextures["water"]->Resource;
 
 	D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
 	srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
@@ -369,6 +389,11 @@ void BoxApp::BuildDescriptorHeaps()
 	srvDesc.Format = woodCrateTex2->GetDesc().Format;
 	srvDesc.Texture2D.MipLevels = woodCrateTex2->GetDesc().MipLevels;
 	md3dDevice->CreateShaderResourceView(woodCrateTex2.Get(), &srvDesc, hDescriptor);
+
+	hDescriptor.Offset(1, mCbvSrvDescriptorSize);
+	srvDesc.Format = waterTex->GetDesc().Format;
+	srvDesc.Texture2D.MipLevels = waterTex->GetDesc().MipLevels;
+	md3dDevice->CreateShaderResourceView(waterTex.Get(), &srvDesc, hDescriptor);
 }
 
 // 改的还是 cbvHeap,每个帧资源中的每一个物体都需要一个对应的CBV描述符,将物体的常量缓冲区地址和偏移后的句柄绑定,	在描述符堆中的句柄按照字节偏移 (frameIndex * objCount + i) * mCbvSrvUavDescriptorSize  物体的常量缓存地址按照字节偏移 i * sizeof(ObjectConstants)
@@ -639,7 +664,7 @@ void BoxApp::BuildFrameResources()
 {
 	for(int i = 0; i < gNumFrameResources; ++i)
 	{
-		mFrameResources.push_back(std::make_unique<FrameResource>(md3dDevice.Get(), 1, (UINT)mAllRitems.size(), mMaterials.size()));
+		mFrameResources.push_back(std::make_unique<FrameResource>(md3dDevice.Get(), 1, (UINT)mAllRitems.size(), mMaterials.size(), mWaves->VertexCount()));
 	}
 }
 
@@ -772,7 +797,7 @@ void BoxApp::BuildRenderItems()
 	XMStoreFloat4x4(&boxRitem->World, XMMatrixScaling(2.0f, 2.0f, 2.0f) * XMMatrixTranslation(0.0f, 0.5f, 0.0f));
 	boxRitem->ObjCBIndex = 0;
 	boxRitem->Geo = mGeometries["shapeGeo"].get();
-	boxRitem->Mat = mMaterials["grass"].get();
+	boxRitem->Mat = mMaterials["stone"].get();
 	boxRitem->PrimitiveType = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
 	boxRitem->IndexCount = boxRitem->Geo->DrawArgs["box"].IndexCount;
 	boxRitem->StartIndexLocation = boxRitem->Geo->DrawArgs["box"].StartIndexLocation;
@@ -783,14 +808,28 @@ void BoxApp::BuildRenderItems()
 	gridItem->World = MathHelper::Identity4x4();
 	gridItem->ObjCBIndex = 1;
 	gridItem->Geo = mGeometries["shapeGeo"].get();
-	gridItem->Mat = mMaterials["grass"].get();
+	gridItem->Mat = mMaterials["stone"].get();
 	gridItem->PrimitiveType = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
 	gridItem->IndexCount = gridItem->Geo->DrawArgs["grid"].IndexCount;
 	gridItem->StartIndexLocation = gridItem->Geo->DrawArgs["grid"].StartIndexLocation;
 	gridItem->BaseVertexLocation = gridItem->Geo->DrawArgs["grid"].BaseVertexLocation;
 	mAllRitems.push_back(std::move(gridItem));
 
-	
+	auto wavesRitem = std::make_unique<RenderItem>();
+	wavesRitem->World = MathHelper::Identity4x4();
+	XMStoreFloat4x4(&wavesRitem->TexTransform, XMMatrixScaling(5.0f, 5.0f, 1.0f));
+	XMStoreFloat4x4(&wavesRitem->World, XMMatrixTranslation(0.0f, 1.0f, 0.0f));
+	wavesRitem->ObjCBIndex = 0;
+	wavesRitem->Mat = mMaterials["water"].get();
+	wavesRitem->Geo = mGeometries["waterGeo"].get();
+	wavesRitem->PrimitiveType = D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
+	wavesRitem->IndexCount = wavesRitem->Geo->DrawArgs["grid"].IndexCount;
+	wavesRitem->StartIndexLocation = wavesRitem->Geo->DrawArgs["grid"].StartIndexLocation;
+	wavesRitem->BaseVertexLocation = wavesRitem->Geo->DrawArgs["grid"].BaseVertexLocation;
+	mWavesRitem = wavesRitem.get();
+	mAllRitems.push_back(std::move(wavesRitem));
+
+
 
 	UINT objCBIndex = 2;
 
@@ -810,7 +849,7 @@ void BoxApp::BuildRenderItems()
 		XMStoreFloat4x4(&leftCylRitem->World, leftCylWorld);
 		leftCylRitem->ObjCBIndex = objCBIndex++;
 		leftCylRitem->Geo = mGeometries["shapeGeo"].get();
-		leftCylRitem->Mat = mMaterials["water"].get();
+		leftCylRitem->Mat = mMaterials["stone"].get();
 		leftCylRitem->PrimitiveType = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
 		leftCylRitem->IndexCount = leftCylRitem->Geo->DrawArgs["cylinder"].IndexCount;
 		leftCylRitem->StartIndexLocation = leftCylRitem->Geo->DrawArgs["cylinder"].StartIndexLocation;
@@ -819,7 +858,7 @@ void BoxApp::BuildRenderItems()
 		XMStoreFloat4x4(&rightCylRitem->World, rightCylWorld);
 		rightCylRitem->ObjCBIndex = objCBIndex++;
 		rightCylRitem->Geo = mGeometries["shapeGeo"].get();
-		rightCylRitem->Mat = mMaterials["water"].get();
+		rightCylRitem->Mat = mMaterials["stone"].get();
 		rightCylRitem->PrimitiveType = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
 		rightCylRitem->IndexCount = rightCylRitem->Geo->DrawArgs["cylinder"].IndexCount;
 		rightCylRitem->StartIndexLocation = rightCylRitem->Geo->DrawArgs["cylinder"].StartIndexLocation;
@@ -828,7 +867,7 @@ void BoxApp::BuildRenderItems()
 		XMStoreFloat4x4(&leftSphereRitem->World, leftSphereWorld);
 		leftSphereRitem->ObjCBIndex = objCBIndex++;
 		leftSphereRitem->Geo = mGeometries["shapeGeo"].get();
-		leftSphereRitem->Mat = mMaterials["water"].get();
+		leftSphereRitem->Mat = mMaterials["stone"].get();
 		leftSphereRitem->PrimitiveType = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
 		leftSphereRitem->IndexCount = leftSphereRitem->Geo->DrawArgs["sphere"].IndexCount;
 		leftSphereRitem->StartIndexLocation = leftSphereRitem->Geo->DrawArgs["sphere"].StartIndexLocation;
@@ -837,7 +876,7 @@ void BoxApp::BuildRenderItems()
 		XMStoreFloat4x4(&rightSphereRitem->World, rightSphereWorld);
 		rightSphereRitem->ObjCBIndex = objCBIndex++;
 		rightSphereRitem->Geo = mGeometries["shapeGeo"].get();
-		rightSphereRitem->Mat = mMaterials["water"].get();
+		rightSphereRitem->Mat = mMaterials["stone"].get();
 		rightSphereRitem->PrimitiveType = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
 		rightSphereRitem->IndexCount = rightSphereRitem->Geo->DrawArgs["sphere"].IndexCount;
 		rightSphereRitem->StartIndexLocation = rightSphereRitem->Geo->DrawArgs["sphere"].StartIndexLocation;
@@ -918,6 +957,14 @@ void BoxApp::BuildMaterials() {
 	grass->Roughness = 0.125f;
 	grass->DiffuseSrvHeapIndex = 0;
 
+	auto stone = std::make_unique<Material>();
+	stone->Name = "stone";
+	stone->MatCBIndex = 0;
+	stone->DiffuseAlbedo = XMFLOAT4(0.2f, 0.6f, 0.2f, 1.0f);
+	stone->FresnelR0 = XMFLOAT3(0.01f, 0.01f, 0.01f);
+	stone->Roughness = 0.125f;
+	stone->DiffuseSrvHeapIndex = 1;
+
 
 	// 当前这种水的材质定义不好
 	auto water = std::make_unique<Material>();
@@ -926,11 +973,12 @@ void BoxApp::BuildMaterials() {
 	water->DiffuseAlbedo = XMFLOAT4(0.0f, 0.2f, 0.6f, 1.0f);
 	water->FresnelR0 = XMFLOAT3(0.1f, 0.1f, 0.1f);
 	water->Roughness = 0.0f;
-	water->DiffuseSrvHeapIndex = 1;
+	water->DiffuseSrvHeapIndex = 2;
 
 	// 将材质数据存放在系统内存之中,为了GPU能够在着色器中访问,还需复制到常量缓冲区中
 	mMaterials["grass"] = std::move(grass);
 	mMaterials["water"] = std::move(water);
+	mMaterials["stone"] = std::move(stone);
 }
 
 void BoxApp::LoadTextures() {
@@ -950,6 +998,15 @@ void BoxApp::LoadTextures() {
 			mCommandList.Get(), woodCrateTex2->Filename.c_str(),
 			woodCrateTex2->Resource, woodCrateTex2->UploadHeap));
 
+	auto water = std::make_unique<Texture>();
+	water->Name = "water";
+	water->Filename = L"Textures/water1.dds";
+	// 上传GPU
+	ThrowIfFailed(DirectX::CreateDDSTextureFromFile12(md3dDevice.Get(),
+			mCommandList.Get(), water->Filename.c_str(),
+			water->Resource, water->UploadHeap));
+
 	mTextures[woodCrateTex->Name] = std::move(woodCrateTex);
 	mTextures[woodCrateTex2->Name] = std::move(woodCrateTex2);
+	mTextures[water->Name] = std::move(water);
 }

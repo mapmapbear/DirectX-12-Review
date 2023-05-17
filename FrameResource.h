@@ -50,6 +50,7 @@ public:
 	FrameResource& operator=(const FrameResource& rhs) = delete;
 	// FrameResource(ID3D12Device *device, UINT passCount, UINT objectCount);
 	FrameResource(ID3D12Device *device, UINT passCount, UINT objectCount, UINT materialCount);
+	FrameResource(ID3D12Device *device, UINT passCount, UINT objectCount, UINT materialCount, UINT waveVertCount);
 	~FrameResource();
 
 	// We cannot reset the allocator until the GPU is done processing the commands.
@@ -61,6 +62,7 @@ public:
 	std::unique_ptr<UploadBuffer<PassConstants>> PassCB = nullptr;
 	std::unique_ptr<UploadBuffer<ObjectConstants>> ObjectCB = nullptr;
 	std::unique_ptr<UploadBuffer<MaterialConstants>> MaterialCB = nullptr;
+	std::unique_ptr<UploadBuffer<Vertex>> WavesVB = nullptr;
 
 	// Fence value to mark commands up to this fence point.  This lets us
 	// check if these frame resources are still in use by the GPU.
