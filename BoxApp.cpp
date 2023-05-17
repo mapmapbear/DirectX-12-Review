@@ -75,7 +75,7 @@ void BoxApp::Update(const GameTimer& gt)
 		WaitForSingleObject(eventHandle, INFINITE);
 		CloseHandle(eventHandle);
 	}
-
+	AnimateMaterial(gt);
 	UpdateObjectCBs(gt);
 	UpdateMainPassCB(gt);
 	UpdateMaterialCBs(gt);
@@ -1009,4 +1009,20 @@ void BoxApp::LoadTextures() {
 	mTextures[woodCrateTex->Name] = std::move(woodCrateTex);
 	mTextures[woodCrateTex2->Name] = std::move(woodCrateTex2);
 	mTextures[water->Name] = std::move(water);
+}
+
+void BoxApp::AnimateMaterial(const GameTimer& gt) {
+	auto watermat = mMaterials["water"].get();
+	float &tu = watermat->MatTransform(3.0, 0.0);
+	float &tv = watermat->MatTransform(3.0, 1.0);
+	tu += 0.1f * gt.DeltaTime();
+	tv += 0.02f * gt.DeltaTime();
+
+	if (tu >= 1.0f)
+		tu -= 1.0f;
+	if (tv >= 1.0f)
+		tv -= 1.0f;
+	watermat->MatTransform(3.0, 0.0) = tu;
+	watermat->MatTransform(3.0, 1.0) = tv;
+	watermat->NumFramesDirty = gNumFrameResources;
 }

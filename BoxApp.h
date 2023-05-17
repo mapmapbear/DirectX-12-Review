@@ -75,6 +75,7 @@ private:
 	void BuildWavesGeometryBuffers();
 	void BuildMaterials();
 	void LoadTextures();
+	void AnimateMaterial(const GameTimer &gt);
 
 private:
 
