@@ -35,10 +35,10 @@ bool BoxApp::Initialize()
 	BuildShapeGeometry1();
 	BuildMaterials();
 	BuildRenderItems();
+	BuildWavesGeometryBuffers();
 	BuildFrameResources();
 	BuildDescriptorHeaps();
 	BuildConstantBufferViews();
-	// BuildBoxGeometry();
 	BuildPSO();
 
 	// 执行初始化命令
@@ -268,7 +268,7 @@ void BoxApp::DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const std::vect
 		mCommandList->SetDescriptorHeaps(_countof(descriptorHeaps), descriptorHeaps);
 		CD3DX12_GPU_DESCRIPTOR_HANDLE tex(mSrvHeap->GetGPUDescriptorHandleForHeapStart());
 		// BuildRenderItems()中设置了Mat,struct Material内含有DiffuseSrvHeapIndex
-		// tex.Offset(ri->Mat->DiffuseSrvHeapIndex, mCbvSrvDescriptorSize);
+		tex.Offset(ri->Mat->DiffuseSrvHeapIndex, mCbvSrvDescriptorSize);
 
 		cmdList->SetGraphicsRootDescriptorTable(0, tex);
 		cmdList->SetGraphicsRootConstantBufferView(1, objCBAddress);
@@ -343,7 +343,7 @@ void BoxApp::BuildDescriptorHeaps()
 	ThrowIfFailed(md3dDevice->CreateDescriptorHeap(&cbvHeapDesc, IID_PPV_ARGS(&mCbvHeap)));
 
 	D3D12_DESCRIPTOR_HEAP_DESC srvHeapDesc = {};
-	srvHeapDesc.NumDescriptors = 1;
+	srvHeapDesc.NumDescriptors = 2;
 	srvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
 	srvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
 	ThrowIfFailed(md3dDevice->CreateDescriptorHeap(&srvHeapDesc, IID_PPV_ARGS(&mSrvHeap)));
@@ -354,6 +354,7 @@ void BoxApp::BuildDescriptorHeaps()
 	CD3DX12_CPU_DESCRIPTOR_HANDLE hDescriptor(mSrvHeap->GetCPUDescriptorHandleForHeapStart());
 
 	auto woodCrateTex = mTextures["woodCrateTex"]->Resource;
+	auto woodCrateTex2 = mTextures["woodCrateTex2"]->Resource;
 
 	D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
 	srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
@@ -362,8 +363,12 @@ void BoxApp::BuildDescriptorHeaps()
 	srvDesc.Texture2D.MostDetailedMip = 0;
 	srvDesc.Texture2D.MipLevels = woodCrateTex->GetDesc().MipLevels;
 	srvDesc.Texture2D.ResourceMinLODClamp = 0.0f;
-
 	md3dDevice->CreateShaderResourceView(woodCrateTex.Get(), &srvDesc, hDescriptor);
+
+	hDescriptor.Offset(1, mCbvSrvDescriptorSize);
+	srvDesc.Format = woodCrateTex2->GetDesc().Format;
+	srvDesc.Texture2D.MipLevels = woodCrateTex2->GetDesc().MipLevels;
+	md3dDevice->CreateShaderResourceView(woodCrateTex2.Get(), &srvDesc, hDescriptor);
 }
 
 // 改的还是 cbvHeap,每个帧资源中的每一个物体都需要一个对应的CBV描述符,将物体的常量缓冲区地址和偏移后的句柄绑定,	在描述符堆中的句柄按照字节偏移 (frameIndex * objCount + i) * mCbvSrvUavDescriptorSize  物体的常量缓存地址按照字节偏移 i * sizeof(ObjectConstants)
@@ -921,7 +926,7 @@ void BoxApp::BuildMaterials() {
 	water->DiffuseAlbedo = XMFLOAT4(0.0f, 0.2f, 0.6f, 1.0f);
 	water->FresnelR0 = XMFLOAT3(0.1f, 0.1f, 0.1f);
 	water->Roughness = 0.0f;
-	water->DiffuseSrvHeapIndex = 0;
+	water->DiffuseSrvHeapIndex = 1;
 
 	// 将材质数据存放在系统内存之中,为了GPU能够在着色器中访问,还需复制到常量缓冲区中
 	mMaterials["grass"] = std::move(grass);
@@ -937,5 +942,14 @@ void BoxApp::LoadTextures() {
 			mCommandList.Get(), woodCrateTex->Filename.c_str(),
 			woodCrateTex->Resource, woodCrateTex->UploadHeap));
 
+	auto woodCrateTex2 = std::make_unique<Texture>();
+	woodCrateTex2->Name = "woodCrateTex2";
+	woodCrateTex2->Filename = L"Textures/bricks2.dds";
+	// 上传GPU
+	ThrowIfFailed(DirectX::CreateDDSTextureFromFile12(md3dDevice.Get(),
+			mCommandList.Get(), woodCrateTex2->Filename.c_str(),
+			woodCrateTex2->Resource, woodCrateTex2->UploadHeap));
+
 	mTextures[woodCrateTex->Name] = std::move(woodCrateTex);
+	mTextures[woodCrateTex2->Name] = std::move(woodCrateTex2);
 }

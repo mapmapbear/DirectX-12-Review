@@ -119,5 +119,6 @@ float4 PS(VertexOut pin) :
 	float4 directLight = ComputeLighting(gCBPass.gLights, mat, pin.PosW, pin.NormalW, toEyeW, shadowFactor);
 	float4 litColor = ambient + directLight;
 	litColor.a = diffuseAlbedo.a;
-	return litColor;
+	// return litColor;
+	return gDiffuseMap.Sample(gsamLinear, pin.UV0.yx);
 }
