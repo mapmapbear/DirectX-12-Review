@@ -102,7 +102,7 @@ float4 PS(VertexOut pin) :
 		SV_Target {
 	// 从纹理中提取此像素的漫反射反照率
 	// 将纹理样本与常量缓冲区中的反照率相乘
-	float4 diffuseAlbedo = gDiffuseMap.Sample(gsamLinear, pin.UV0) * gMatCBPass.gDiffuseAlbedo;
+	float4 diffuseAlbedo = gDiffuseMap.Sample(gsamLinear, pin.UV0.yx) * gMatCBPass.gDiffuseAlbedo;
 
 	pin.NormalW = normalize(pin.NormalW);
 
@@ -119,6 +119,5 @@ float4 PS(VertexOut pin) :
 	float4 directLight = ComputeLighting(gCBPass.gLights, mat, pin.PosW, pin.NormalW, toEyeW, shadowFactor);
 	float4 litColor = ambient + directLight;
 	litColor.a = diffuseAlbedo.a;
-	// return litColor;
-	return diffuseAlbedo;
+	return litColor;
 }

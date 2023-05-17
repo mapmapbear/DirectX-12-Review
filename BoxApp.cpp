@@ -25,10 +25,11 @@ bool BoxApp::Initialize()
 		return 0;
 	mCbvSrvDescriptorSize = md3dDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 
-	LoadTextures();
 
 	// 重置命令列表,准备初始化
 	ThrowIfFailed(mCommandList->Reset(mDirectCmdListAlloc.Get(), nullptr));
+	LoadTextures();
+
 	BuildRootSignature();
 	BuildShadersAndInputLayout();
 	BuildShapeGeometry1();
@@ -212,9 +213,11 @@ void BoxApp::Draw(const GameTimer& gt)
 	// 设置 mCbvHeap,里面为每个帧资源的每一个物体和过程常量设了一个描述符,
 	// 将帧资源中的物体缓存和过程缓存使用 index*bytesize,通过handle偏移绑定,
 	// 物体常量和过程常量缓存通过CopyData()赋值
-	ID3D12DescriptorHeap* descriptorHeaps[] = { mCbvHeap.Get()};
-	mCommandList->SetDescriptorHeaps(_countof(descriptorHeaps), descriptorHeaps);
+	
 	// 其实PSO中有根签名
+
+	ID3D12DescriptorHeap *descriptorHeaps1[] = {mCbvHeap.Get() };
+	mCommandList->SetDescriptorHeaps(_countof(descriptorHeaps1), descriptorHeaps1);
 	mCommandList->SetGraphicsRootSignature(mRootSignature.Get());
 
 	auto passCB = mCurrFrameResources->PassCB->Resource();
@@ -261,12 +264,13 @@ void BoxApp::DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const std::vect
 		D3D12_GPU_VIRTUAL_ADDRESS matCBAddress = materialCB->GetGPUVirtualAddress();
 		matCBAddress += ri->Mat->MatCBIndex * matCBByteSize;
 
-		CD3DX12_GPU_DESCRIPTOR_HANDLE tex(mCbvHeap->GetGPUDescriptorHandleForHeapStart());
+		ID3D12DescriptorHeap *descriptorHeaps[] = { mSrvHeap.Get() };
+		mCommandList->SetDescriptorHeaps(_countof(descriptorHeaps), descriptorHeaps);
+		CD3DX12_GPU_DESCRIPTOR_HANDLE tex(mSrvHeap->GetGPUDescriptorHandleForHeapStart());
 		// BuildRenderItems()中设置了Mat,struct Material内含有DiffuseSrvHeapIndex
 		// tex.Offset(ri->Mat->DiffuseSrvHeapIndex, mCbvSrvDescriptorSize);
 
 		cmdList->SetGraphicsRootDescriptorTable(0, tex);
-
 		cmdList->SetGraphicsRootConstantBufferView(1, objCBAddress);
 		cmdList->SetGraphicsRootConstantBufferView(3, matCBAddress);
 
@@ -337,6 +341,29 @@ void BoxApp::BuildDescriptorHeaps()
 	cbvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
 	cbvHeapDesc.NodeMask = 0;
 	ThrowIfFailed(md3dDevice->CreateDescriptorHeap(&cbvHeapDesc, IID_PPV_ARGS(&mCbvHeap)));
+
+	D3D12_DESCRIPTOR_HEAP_DESC srvHeapDesc = {};
+	srvHeapDesc.NumDescriptors = 1;
+	srvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+	srvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+	ThrowIfFailed(md3dDevice->CreateDescriptorHeap(&srvHeapDesc, IID_PPV_ARGS(&mSrvHeap)));
+
+	//
+	// Fill out the heap with actual descriptors.
+	//
+	CD3DX12_CPU_DESCRIPTOR_HANDLE hDescriptor(mSrvHeap->GetCPUDescriptorHandleForHeapStart());
+
+	auto woodCrateTex = mTextures["woodCrateTex"]->Resource;
+
+	D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+	srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+	srvDesc.Format = woodCrateTex->GetDesc().Format;
+	srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+	srvDesc.Texture2D.MostDetailedMip = 0;
+	srvDesc.Texture2D.MipLevels = woodCrateTex->GetDesc().MipLevels;
+	srvDesc.Texture2D.ResourceMinLODClamp = 0.0f;
+
+	md3dDevice->CreateShaderResourceView(woodCrateTex.Get(), &srvDesc, hDescriptor);
 }
 
 // 改的还是 cbvHeap,每个帧资源中的每一个物体都需要一个对应的CBV描述符,将物体的常量缓冲区地址和偏移后的句柄绑定,	在描述符堆中的句柄按照字节偏移 (frameIndex * objCount + i) * mCbvSrvUavDescriptorSize  物体的常量缓存地址按照字节偏移 i * sizeof(ObjectConstants)
@@ -393,24 +420,6 @@ void BoxApp::BuildConstantBufferViews()
 
 			md3dDevice->CreateConstantBufferView(&cbvDesc, handle);
 		}
-	}
-
-	for (int frameIndex = 0; frameIndex < gNumFrameResources; ++frameIndex) {
-		auto woodCrateTex = mTextures["woodCrateTex"]->Resource;
-		int heapIndex = objCount * gNumFrameResources + frameIndex; // heapIndex = objCount * gNumFrameResources + frameIndex
-		auto handle = CD3DX12_CPU_DESCRIPTOR_HANDLE(mCbvHeap->GetCPUDescriptorHandleForHeapStart());
-		handle.Offset(heapIndex, mCbvSrvUavDescriptorSize);
-
-		D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
-		// 提供方法,可以将采样时所返回的纹理向量中的分量进行重新排序
-		srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-		srvDesc.Format = woodCrateTex->GetDesc().Format;
-		srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
-		srvDesc.Texture2D.MostDetailedMip = 0; // 此视图中图像细节最详尽的mipmap层级的索引
-		srvDesc.Texture2D.MipLevels = woodCrateTex->GetDesc().MipLevels; // 此视图的mipmap层级数量,以MostDetailedMip为起始值
-		srvDesc.Texture2D.ResourceMinLODClamp = 1.0f; // 可以访问的最小mipmap层级
-
-		md3dDevice->CreateShaderResourceView(woodCrateTex.Get(), &srvDesc, handle);
 	}
 
 	UINT passCBByteSize = d3dUtil::CalcConstantBufferByteSize(sizeof(PassConstants));
@@ -541,7 +550,6 @@ void BoxApp::BuildRootSignature() {
 	slotRootParameter[1].InitAsConstantBufferView(0); // register b0
 	slotRootParameter[2].InitAsConstantBufferView(1); // register b1
 	slotRootParameter[3].InitAsConstantBufferView(2); // register b2
-	// slotRootParameter[0].InitAsShaderResourceView(0);
 
 	auto staticSamplers = GetStaticSamplers1(); // register s0 ~ s6
 
@@ -608,7 +616,12 @@ void BoxApp::BuildPSO()
 	opaquePsoDesc.SampleDesc.Count = m4xMsaaState ? 4 : 1;
 	opaquePsoDesc.SampleDesc.Quality = m4xMsaaState ? (m4xMsaaQuality - 1) : 0;
 	opaquePsoDesc.DSVFormat = mDepthStencilFormat;
+
+	HRESULT hr = md3dDevice->GetDeviceRemovedReason();
+	HRESULT removeReason = md3dDevice->GetDeviceRemovedReason();
 	ThrowIfFailed(md3dDevice->CreateGraphicsPipelineState(&opaquePsoDesc, IID_PPV_ARGS(&mPSOs["opaque"])));
+
+
 
 	// PSO for opaque wireframe objects
 
