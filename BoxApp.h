@@ -131,6 +131,8 @@ private:
 	UINT mCbvSrvDescriptorSize;
 	bool mIsWireframe;
 	bool misTransparent;
+
+	UINT posState;
 	UINT gColorState;
 	float gColor[3];
 };

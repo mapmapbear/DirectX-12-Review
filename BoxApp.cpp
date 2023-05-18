@@ -84,6 +84,7 @@ void BoxApp::Update(const GameTimer& gt)
 	UpdateWaves(gt);
 }
 
+
 void BoxApp::UpdateImGui(const GameTimer &gt, PassConstants& buffer) {
 	static bool animateCube = true, customColor = false;
 	ImGui_ImplDX12_NewFrame();
@@ -97,6 +98,12 @@ void BoxApp::UpdateImGui(const GameTimer &gt, PassConstants& buffer) {
 		theta = XMScalarModAngle(theta);
 	}
 	if (ImGui::Begin("Use ImGui")) {
+		{
+			const char *items[] = { "Opaque", "Transparent", "WireFrame" };
+			static int item_current = 0;
+			ImGui::Combo("PSO", &item_current, items, IM_ARRAYSIZE(items));
+			posState = item_current;
+		}
 		ImGui::Checkbox("Animate Cube", &animateCube);
 		ImGui::SameLine(0.0f, 25.0f);
 		if (ImGui::Button("Reset Params")) {
@@ -263,16 +270,21 @@ void BoxApp::Draw(const GameTimer& gt)
 
 	ThrowIfFailed(cmdListAlloc->Reset());
 
-	if (mIsWireframe)
-	{ // 设置顶点结构体; 说明有两个CBV,对应寄存器0,1; VS,PS; solid/wireframe
-		ThrowIfFailed(mCommandList->Reset(cmdListAlloc.Get(), mPSOs["opaque_wireframe"].Get()));
-	} else if (misTransparent) {
-		ThrowIfFailed(mCommandList->Reset(cmdListAlloc.Get(), mPSOs["transparent"].Get()));
-	} else
-	{
-		ThrowIfFailed(mCommandList->Reset(cmdListAlloc.Get(), mPSOs["opaque"].Get()));
+	// if (mIsWireframe)
+	switch (posState) {
+		case 0:
+			ThrowIfFailed(mCommandList->Reset(cmdListAlloc.Get(), mPSOs["opaque"].Get()));
+			break;
+		case 1:
+			ThrowIfFailed(mCommandList->Reset(cmdListAlloc.Get(), mPSOs["transparent"].Get()));
+			break;
+		case 2:
+			ThrowIfFailed(mCommandList->Reset(cmdListAlloc.Get(), mPSOs["opaque_wireframe"].Get()));
+			break;
+		default:
+			ThrowIfFailed(mCommandList->Reset(cmdListAlloc.Get(), mPSOs["opaque"].Get()));
+			break;
 	}
-
 	ImGui::Render();
 
 	mCommandList->RSSetViewports(1, &mScreenViewport);
