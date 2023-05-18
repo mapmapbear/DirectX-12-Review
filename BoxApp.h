@@ -48,13 +48,12 @@ public:
 private:
 	virtual void OnResize() override;
 	virtual void Update(const GameTimer& gt) override;
-	void UpdateImGui(const GameTimer &gt);
+	void UpdateImGui(const GameTimer &gt, PassConstants& buffer);
 	void UpdateObjectCBs(const GameTimer& gt);
 	void UpdateMainPassCB(const GameTimer& gt);
 	void UpdateCamera(const GameTimer& gt);
 	void UpdateWaves(const GameTimer &gt);
 	void OnKeyboardInput(const GameTimer &gt);
-	void DrawImGui();
 	void UpdateMaterialCBs(const GameTimer &gt);
 	virtual void Draw(const GameTimer& gt) override;
 	void DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const std::vector<RenderItem*>& ritems);
@@ -132,4 +131,6 @@ private:
 	UINT mCbvSrvDescriptorSize;
 	bool mIsWireframe;
 	bool misTransparent;
+	UINT gColorState;
+	float gColor[3];
 };

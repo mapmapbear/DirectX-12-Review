@@ -54,8 +54,8 @@ struct cbPass {
 	float gDeltaTime;
 	float4 gAmbientLight;
 	Light gLights[MaxLights];
+	float4 g_Color;
 	uint g_UseCustomColor;
-	vector g_Color;
 };
 ConstantBuffer<cbPass> gCBPass : register(b1);
 
@@ -100,8 +100,7 @@ VertexOut VS(VertexIn vin) {
 // 在光栅化期间(为三角形计算像素颜色)对顶点着色器(或几何着色器)输出的顶点属性进行差值
 // 随后,再将这些差值数据传至像素着色器中作为它的输入
 // SV_Target: 返回值的类型应当与渲染目标格式相匹配(该输出值会被存于渲染目标之中)
-float4 PS(VertexOut pin) :
-		SV_Target {
+float4 PS(VertexOut pin) : SV_Target {
 	// 从纹理中提取此像素的漫反射反照率
 	// 将纹理样本与常量缓冲区中的反照率相乘
 	float4 diffuseAlbedo = gDiffuseMap.Sample(gsamLinear, pin.UV0.yx) * gMatCBPass.gDiffuseAlbedo;
@@ -122,6 +121,6 @@ float4 PS(VertexOut pin) :
 	float4 litColor = ambient + directLight;
 	litColor.a = diffuseAlbedo.a;
 	// return litColor;
-	// return gDiffuseMap.Sample(gsamLinear, pin.UV0.yx);
-	return gCBPass.g_UseCustomColor ? litColor : float4(1.0, 1.0, 0.0, 1.0);
+	// return gCBPass.g_UseCustomColor ? float4(1.0, 0.0, 1.0, 1.0) : litColor;
+	return gCBPass.g_UseCustomColor ? gCBPass.g_Color : litColor;
 }

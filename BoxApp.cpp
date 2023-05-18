@@ -76,7 +76,7 @@ void BoxApp::Update(const GameTimer& gt)
 		WaitForSingleObject(eventHandle, INFINITE);
 		CloseHandle(eventHandle);
 	}
-	UpdateImGui(gt);
+	UpdateImGui(gt, mMainPassCB);
 	AnimateMaterial(gt);
 	UpdateObjectCBs(gt);
 	UpdateMainPassCB(gt);
@@ -84,19 +84,15 @@ void BoxApp::Update(const GameTimer& gt)
 	UpdateWaves(gt);
 }
 
-uint32_t useColorState = 0.0;
-DirectX::XMFLOAT4 globalColor = XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f);
-
-void BoxApp::UpdateImGui(const GameTimer &gt) {
+void BoxApp::UpdateImGui(const GameTimer &gt, PassConstants& buffer) {
+	static bool animateCube = true, customColor = false;
 	ImGui_ImplDX12_NewFrame();
 	ImGui_ImplWin32_NewFrame();
 	ImGui::NewFrame();
-
-	ImGuiIO &io = ImGui::GetIO();
 	static float tx = 0.0f, ty = 0.0f, phi = 0.0f, theta = 0.0f, scale = 1.0f, fov = XM_PIDIV2;
-	static bool animateCube = true, customColor = false;
+	float dt = gt.DeltaTime();
 	if (animateCube) {
-		phi += 0.3f * gt.DeltaTime(), theta += 0.37f * gt.DeltaTime();
+		phi += 0.3f * dt, theta += 0.37f * dt;
 		phi = XMScalarModAngle(phi);
 		theta = XMScalarModAngle(theta);
 	}
@@ -109,52 +105,29 @@ void BoxApp::UpdateImGui(const GameTimer &gt) {
 			fov = XM_PIDIV2;
 		}
 		ImGui::SliderFloat("Scale", &scale, 0.2f, 2.0f);
-	
 		ImGui::Text("Phi: %.2f degrees", XMConvertToDegrees(phi));
-		ImGui::SliderFloat("##1", &phi, -XM_PI, XM_PI, ""); // 不显示文字，但避免重复的标签
+		ImGui::SliderFloat("##1", &phi, -XM_PI, XM_PI, "");
 		ImGui::Text("Theta: %.2f degrees", XMConvertToDegrees(theta));
 		ImGui::SliderFloat("##2", &theta, -XM_PI, XM_PI, "");
-	
 		ImGui::Text("Position: (%.1f, %.1f, 0.0)", tx, ty);
-	
 		ImGui::Text("FOV: %.2f degrees", XMConvertToDegrees(fov));
 		ImGui::SliderFloat("##3", &fov, XM_PIDIV4, XM_PI / 3 * 2, "");
-	
+
 		if (ImGui::Checkbox("Use Custom Color", &customColor)) {
-			useColorState = customColor;
-			// std::wstring s = std::to_wstring(useColorState);
-			// ::OutputDebugString(s.c_str());
 		}
-			
 		if (customColor) {
-			ImGui::ColorEdit3("Color", reinterpret_cast<float *>(&globalColor));
+			ImGui::ColorEdit3("ClearColor", gColor);
+			printf("");
 		}
 	}
 	ImGui::End();
-	
-	// 不允许在操作UI时操作物体
-	if (!ImGui::IsAnyItemActive()) {
-		// 鼠标左键拖动平移
-		if (ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
-			tx += io.MouseDelta.x * 0.01f;
-			ty -= io.MouseDelta.y * 0.01f;
-		}
-		// 鼠标右键拖动旋转
-		else if (ImGui::IsMouseDragging(ImGuiMouseButton_Right)) {
-			phi -= io.MouseDelta.y * 0.01f;
-			theta -= io.MouseDelta.x * 0.01f;
-			phi = XMScalarModAngle(phi);
-			theta = XMScalarModAngle(theta);
-		}
-		// 鼠标滚轮缩放
-		else if (io.MouseWheel != 0.0f) {
-			scale += 0.02f * io.MouseWheel;
-			if (scale > 2.0f)
-				scale = 2.0f;
-			else if (scale < 0.2f)
-				scale = 0.2f;
-		}
-	}
+	buffer.useCustomColor = customColor ? 1 : 0;
+	buffer.color = XMFLOAT4(gColor[0], gColor[1], gColor[2], 1.0);
+	// std::wstring s = std::to_wstring(gColor.x);
+	std::wstring sx = std::to_wstring(mMainPassCB.color.x);
+	std::wstring sy = std::to_wstring(mMainPassCB.color.y);
+	std::wstring sz = std::to_wstring(mMainPassCB.color.z);
+	::OutputDebugString((L"MAT:" + sx + sy + sz + L"\n").c_str());
 }
 
 void BoxApp::UpdateObjectCBs(const GameTimer& gt)
@@ -199,18 +172,12 @@ void BoxApp::UpdateMainPassCB(const GameTimer& gt) {
 	mMainPassCB.TotalTime = gt.TotalTime();
 	mMainPassCB.DeltaTime = gt.DeltaTime();
 	mMainPassCB.AmbientLight = { 0.25f, 0.25f, 0.35f, 1.0f };
-	// ���㲼��
 	mMainPassCB.Lights[0].Direction = { 0.57735f, -0.57735f, 0.57735f };
 	mMainPassCB.Lights[0].Strength = { 0.6f, 0.6f, 0.6f };
 	mMainPassCB.Lights[1].Direction = { -0.57735f, -0.57735f, 0.57735f };
 	mMainPassCB.Lights[1].Strength = { 0.3f, 0.3f, 0.3f };
 	mMainPassCB.Lights[2].Direction = { 0.0f, -0.707f, -0.707f };
 	mMainPassCB.Lights[2].Strength = { 0.15f, 0.15f, 0.15f };
-
-	mMainPassCB.useCustomColor = useColorState;
-	std::wstring s = std::to_wstring(mMainPassCB.useCustomColor);
-	::OutputDebugString(s.c_str());
-	mMainPassCB.color = globalColor;
 
 	auto currPassCB = mCurrFrameResources->PassCB.get();
 	currPassCB->CopyData(0, mMainPassCB);
@@ -311,8 +278,17 @@ void BoxApp::Draw(const GameTimer& gt)
 		ThrowIfFailed(mCommandList->Reset(cmdListAlloc.Get(), mPSOs["opaque"].Get()));
 	}
 
-	
+	// ImGui_ImplDX12_NewFrame();
+	// ImGui_ImplWin32_NewFrame();
+	// ImGui::NewFrame();
 
+	std::wstring s = std::to_wstring(mMainPassCB.useCustomColor);
+	// ::OutputDebugString((L"Draw:" + s + L"\n").c_str());
+
+	std::wstring sx = std::to_wstring(mMainPassCB.color.x);
+	std::wstring sy = std::to_wstring(mMainPassCB.color.y);
+	std::wstring sz = std::to_wstring(mMainPassCB.color.z);
+	::OutputDebugString((L"Draw:" + sx + sy + sz + L"\n").c_str());
 	ImGui::Render();
 
 	mCommandList->RSSetViewports(1, &mScreenViewport);
