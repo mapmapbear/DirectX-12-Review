@@ -18,6 +18,12 @@
 #pragma comment(lib, "D3D12.lib")
 #pragma comment(lib, "dxgi.lib")
 
+class ImguiManager {
+public:
+	ImguiManager();
+	~ImguiManager();
+};
+
 class D3DApp
 {
 protected:
@@ -81,7 +87,7 @@ protected:
 protected:
 
 	static D3DApp* mApp;
-
+	ImguiManager imguiManager;
 	HINSTANCE	mhAppInst = nullptr;	// 应用实例句柄
 	HWND		mhMainWnd = nullptr;	// 主窗口句柄
 	bool		mAppPaused = false;		// 程序是否暂停
@@ -130,3 +136,4 @@ protected:
 	int mClientWidth = 800; // 窗口宽度
 	int mClientHeight = 600; // 窗口高度
 };
+

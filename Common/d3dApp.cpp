@@ -1,8 +1,6 @@
 ﻿#include "d3dApp.h"
 #include <windowsx.h>
 
-
-
 using Microsoft::WRL::ComPtr;
 using namespace std;
 using namespace DirectX;
@@ -109,20 +107,18 @@ bool D3DApp::Initialize()
 		return false;
 
 	OnResize();
-	if (!InitImGui())
-		return false;
+	// if (!InitImGui())
+	// 	return false;
 	return true;
 }
 
 bool D3DApp::InitImGui() {
-	IMGUI_CHECKVERSION();
-	ImGui::CreateContext();
-	ImGuiIO &io = ImGui::GetIO();
-	(void)io;
-	ImGui::StyleColorsDark();
-	ImGui_ImplWin32_Init(mhMainWnd);
-	ImGui_ImplDX12_Init(md3dDevice.Get(), 3, DXGI_FORMAT_R8G8B8A8_UNORM, mImGUIHeap.Get(),
-			mImGUIHeap->GetCPUDescriptorHandleForHeapStart(), mImGUIHeap->GetGPUDescriptorHandleForHeapStart());
+	// IMGUI_CHECKVERSION();
+	// ImGui::CreateContext();
+	// ImGuiIO &io = ImGui::GetIO();
+	// (void)io;
+	// ImGui::StyleColorsDark();
+	
 	return true;
 }
 
@@ -261,6 +257,7 @@ LRESULT D3DApp::MsgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
 	if (ImGui_ImplWin32_WndProcHandler(hwnd, msg, wParam, lParam))
 		return true;
+	const ImGuiIO imio = ImGui::GetIO();
 	switch (msg)
 	{
 		// 窗口被激活或反激活时,WM_ACTIVATE被发送
@@ -369,6 +366,7 @@ LRESULT D3DApp::MsgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 		OnMouseUp(wParam, GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam));
 		return 0;
 	case WM_MOUSEMOVE:
+		if (imio.WantCaptureMouse) break;
 		OnMouseMove(wParam, GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam));
 		return 0;
 	case WM_KEYUP:
@@ -436,7 +434,7 @@ bool D3DApp::InitMainWindow()
 	// 显示并更新窗口
 	ShowWindow(mhMainWnd, SW_SHOW);
 	UpdateWindow(mhMainWnd);
-
+	ImGui_ImplWin32_Init(mhMainWnd);
 	return true;
 }
 
@@ -505,6 +503,8 @@ bool D3DApp::InitDirect3D()
 	// 6,创建应用程序所需的描述符堆	
 	CreateRtvAndDsvDescriptorHeaps();
 
+	ImGui_ImplDX12_Init(md3dDevice.Get(), 3, DXGI_FORMAT_R8G8B8A8_UNORM, mImGUIHeap.Get(),
+			mImGUIHeap->GetCPUDescriptorHandleForHeapStart(), mImGUIHeap->GetGPUDescriptorHandleForHeapStart());
 	// 7,调整后台缓冲区的大小,并为它创建渲染目标视图RTV
 	// 8,创建深度/模板缓冲区及与之关联的深度/模板视图DSV
 	// 9,设置视口(viewport)和裁剪矩形(scissor rectangle)
@@ -717,4 +717,18 @@ void D3DApp::LogOutputDisplayModes(IDXGIOutput* output, DXGI_FORMAT format)
 
 		::OutputDebugString(text.c_str());
 	}
+}
+
+
+ImguiManager::ImguiManager() {
+	IMGUI_CHECKVERSION();
+	ImGui::CreateContext();
+	ImGuiIO &io = ImGui::GetIO();
+	ImGui::StyleColorsDark();
+}
+
+ImguiManager::~ImguiManager() {
+	ImGui_ImplDX12_Shutdown();
+	ImGui_ImplWin32_Shutdown();
+	ImGui::DestroyContext();
 }
