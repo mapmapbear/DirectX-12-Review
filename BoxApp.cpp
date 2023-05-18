@@ -123,11 +123,6 @@ void BoxApp::UpdateImGui(const GameTimer &gt, PassConstants& buffer) {
 	ImGui::End();
 	buffer.useCustomColor = customColor ? 1 : 0;
 	buffer.color = XMFLOAT4(gColor[0], gColor[1], gColor[2], 1.0);
-	// std::wstring s = std::to_wstring(gColor.x);
-	std::wstring sx = std::to_wstring(mMainPassCB.color.x);
-	std::wstring sy = std::to_wstring(mMainPassCB.color.y);
-	std::wstring sz = std::to_wstring(mMainPassCB.color.z);
-	::OutputDebugString((L"MAT:" + sx + sy + sz + L"\n").c_str());
 }
 
 void BoxApp::UpdateObjectCBs(const GameTimer& gt)
@@ -278,17 +273,6 @@ void BoxApp::Draw(const GameTimer& gt)
 		ThrowIfFailed(mCommandList->Reset(cmdListAlloc.Get(), mPSOs["opaque"].Get()));
 	}
 
-	// ImGui_ImplDX12_NewFrame();
-	// ImGui_ImplWin32_NewFrame();
-	// ImGui::NewFrame();
-
-	std::wstring s = std::to_wstring(mMainPassCB.useCustomColor);
-	// ::OutputDebugString((L"Draw:" + s + L"\n").c_str());
-
-	std::wstring sx = std::to_wstring(mMainPassCB.color.x);
-	std::wstring sy = std::to_wstring(mMainPassCB.color.y);
-	std::wstring sz = std::to_wstring(mMainPassCB.color.z);
-	::OutputDebugString((L"Draw:" + sx + sy + sz + L"\n").c_str());
 	ImGui::Render();
 
 	mCommandList->RSSetViewports(1, &mScreenViewport);
