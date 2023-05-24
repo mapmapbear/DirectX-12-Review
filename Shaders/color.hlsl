@@ -104,6 +104,12 @@ float4 PS(VertexOut pin) : SV_Target {
 	// 从纹理中提取此像素的漫反射反照率
 	// 将纹理样本与常量缓冲区中的反照率相乘
 	float4 diffuseAlbedo = gDiffuseMap.Sample(gsamLinear, pin.UV0.yx) * gMatCBPass.gDiffuseAlbedo;
+#ifdef ALPHA_TEST
+	// Discard pixel if texture alpha < 0.1.  We do this test as soon
+	// as possible in the shader so that we can potentially exit the
+	// shader early, thereby skipping the rest of the shader code.
+	clip(diffuseAlbedo.a - 0.1f);
+#endif
 
 	pin.NormalW = normalize(pin.NormalW);
 

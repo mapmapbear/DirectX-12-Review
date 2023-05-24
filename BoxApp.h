@@ -106,9 +106,13 @@ private:
 	FrameResource* mCurrFrameResources = nullptr;
 	int mCurrFrameResourceIndex = 0;
 	std::vector<std::unique_ptr<RenderItem>> mAllRitems;
+	std::vector<std::unique_ptr<RenderItem>> mOpaqueArr;
+	std::vector<std::unique_ptr<RenderItem>> mTransparentArr;
+	std::vector<std::unique_ptr<RenderItem>> mAlphaTestArr;
 
 	std::vector<RenderItem*> mOpaqueRitems;
 	std::vector<RenderItem*> mTransparentRitems;
+	std::vector<RenderItem *> mAlphaTestRitems;
 	PassConstants mMainPassCB;
 	XMFLOAT3 mEyePos = { 0.0f, 0.0f, 0.0f };
 

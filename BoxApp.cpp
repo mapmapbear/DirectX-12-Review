@@ -8,6 +8,24 @@
 
 const int gNumFrameResources = 3;
 
+template <typename T>
+std::vector<T> AddVectors(const std::vector<T> &vector1, const std::vector<T> &vector2) {
+	std::vector<T> result;
+
+	// 检查向量的大小是否相同
+	if (vector1.size() != vector2.size()) {
+		::OutputDebugStringW(L"Error: Vectors must have the same size.");
+		return result;
+	}
+
+	// 遍历向量并相加对应位置的元素
+	for (size_t i = 0; i < vector1.size(); ++i) {
+		result.push_back(vector1[i] + vector2[i]);
+	}
+
+	return result;
+}
+
 BoxApp::BoxApp(HINSTANCE hInstance)
 	: D3DApp(hInstance)
 {
@@ -42,7 +60,7 @@ bool BoxApp::Initialize()
 	BuildPSO();
 
 	// 执行初始化命令
-	ThrowIfFailed(mCommandList->Close());
+	ThrowIfFailed(mCommandList->Close())
 	ID3D12CommandList* cmdsList[] = { mCommandList.Get() };
 	mCommandQueue->ExecuteCommandLists(_countof(cmdsList), cmdsList);
 
@@ -311,6 +329,12 @@ void BoxApp::Draw(const GameTimer& gt)
 
 	DrawRenderItems(mCommandList.Get(), mOpaqueRitems);
 
+	mCommandList->SetPipelineState(mPSOs["alphaTested"].Get());
+	DrawRenderItems(mCommandList.Get(), mAlphaTestRitems);
+
+	mCommandList->SetPipelineState(mPSOs["transparent"].Get());
+	DrawRenderItems(mCommandList.Get(), mTransparentRitems);
+
 	mCommandList->SetDescriptorHeaps(1, mImGUIHeap.GetAddressOf());
 	ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), mCommandList.Get());
 
@@ -412,7 +436,7 @@ void BoxApp::OnMouseMove(WPARAM btnState, int x, int y)
 
 void BoxApp::BuildDescriptorHeaps()
 {
-	UINT objCount = (UINT)mOpaqueRitems.size();
+	UINT objCount = (UINT)(mOpaqueRitems.size() + mTransparentRitems.size() + mAlphaTestRitems.size());
 
 	// 为每个帧资源中的每一个物体都创建一个CBV描述符
 	// 为每个帧资源的渲染过程CBV而+1
@@ -470,7 +494,8 @@ void BoxApp::BuildConstantBufferViews()
 	UINT objCBByteSize = d3dUtil::CalcConstantBufferByteSize(sizeof(ObjectConstants));
 	UINT matCBByteSize = d3dUtil::CalcConstantBufferByteSize(sizeof(MaterialConstants));
 
-	UINT objCount = (UINT)mOpaqueRitems.size();
+	// UINT objCount = (UINT)mOpaqueRitems.size();
+	UINT objCount = (UINT)(mOpaqueRitems.size() + mTransparentRitems.size() + mAlphaTestRitems.size());
 
 	// 每个帧资源中的每一个物体都需要一个对应的CBV描述符
 	for (int frameIndex = 0; frameIndex < gNumFrameResources; ++frameIndex)
@@ -500,14 +525,15 @@ void BoxApp::BuildConstantBufferViews()
 	// material CBV
 	for (int frameIndex = 0; frameIndex < gNumFrameResources; ++frameIndex) {
 		auto materialCB = mFrameResources[frameIndex]->MaterialCB->Resource();
-		for (UINT i = 0; i < mMaterials.size(); ++i) {
+		// for (UINT i = 0; i < mMaterials.size(); ++i) {
+		for (auto& m : mMaterials){
 			D3D12_GPU_VIRTUAL_ADDRESS cbAddress = materialCB->GetGPUVirtualAddress(); // 这里将 World和描述符关联
-
+			int i = m.second.get()->MatCBIndex;
 			// 偏移到缓冲区中第i个物体的常量缓冲区
 			cbAddress += i * matCBByteSize;
 
 			// 偏移到该物体在描述符堆中的CBV
-			int heapIndex = frameIndex * objCount + i * mOpaqueRitems[i]->Mat->MatCBIndex;
+			int heapIndex = frameIndex * objCount + i;
 			auto handle = CD3DX12_CPU_DESCRIPTOR_HANDLE(mCbvHeap->GetCPUDescriptorHandleForHeapStart());
 			// 在描述符堆中的句柄按照字节偏移 (frameIndex * objCount + i) * mCbvSrvUavDescriptorSize
 			handle.Offset(heapIndex, mCbvSrvUavDescriptorSize);
@@ -676,8 +702,13 @@ void BoxApp::BuildRootSignature() {
 
 void BoxApp::BuildShadersAndInputLayout()
 {
+	const D3D_SHADER_MACRO alphaTestDefines[] = {
+		"ALPHA_TEST", "1",
+		NULL, NULL
+	};
 	mShaders["standardVS"] = d3dUtil::CompileShader(L"Shaders\\color.hlsl", nullptr, "VS", "vs_5_1");
 	mShaders["opaquePS"] = d3dUtil::CompileShader(L"Shaders\\color.hlsl", nullptr, "PS", "ps_5_1");
+	mShaders["alphaTestedPS"] = d3dUtil::CompileShader(L"Shaders\\color.hlsl", alphaTestDefines, "PS", "ps_5_1");
 	// LPCSTR SemanticName; UINT SemanticIndex; DXGI_FORMAT Format; UINT InputSlot; UINT AlignedByteOffset; D3D12_INPUT_CLASSIFICATION InputSlotClass; UINT InstanceDataStepRate; D3D12_INPUT_ELEMENT_DESC;
 	mInputLayout = {
 		{ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
@@ -718,28 +749,36 @@ void BoxApp::BuildPSO()
 
 	HRESULT hr = md3dDevice->GetDeviceRemovedReason();
 	HRESULT removeReason = md3dDevice->GetDeviceRemovedReason();
-	ThrowIfFailed(md3dDevice->CreateGraphicsPipelineState(&opaquePsoDesc, IID_PPV_ARGS(&mPSOs["opaque"])));
+	ThrowIfFailed(md3dDevice->CreateGraphicsPipelineState(&opaquePsoDesc, IID_PPV_ARGS(&mPSOs["opaque"])))
 
 	// PSO for opaque wireframe objects
 
 	D3D12_GRAPHICS_PIPELINE_STATE_DESC opaqueWireframePsoDesc = opaquePsoDesc;
 	opaqueWireframePsoDesc.RasterizerState.FillMode = D3D12_FILL_MODE_WIREFRAME;
-	ThrowIfFailed(md3dDevice->CreateGraphicsPipelineState(&opaqueWireframePsoDesc, IID_PPV_ARGS(&mPSOs["opaque_wireframe"])));
+	ThrowIfFailed(md3dDevice->CreateGraphicsPipelineState(&opaqueWireframePsoDesc, IID_PPV_ARGS(&mPSOs["opaque_wireframe"])))
 
 	D3D12_GRAPHICS_PIPELINE_STATE_DESC transparentPsoDesc = opaquePsoDesc;
 	D3D12_RENDER_TARGET_BLEND_DESC transparencyBlendDesc;
 	transparencyBlendDesc.BlendEnable = true;
 	transparencyBlendDesc.LogicOpEnable = false;
-	transparencyBlendDesc.SrcBlend = D3D12_BLEND_SRC_ALPHA;
-	transparencyBlendDesc.DestBlend = D3D12_BLEND_INV_SRC_ALPHA;
+	transparencyBlendDesc.SrcBlend = D3D12_BLEND_SRC_COLOR;
+	transparencyBlendDesc.DestBlend = D3D12_BLEND_INV_SRC_COLOR;
 	transparencyBlendDesc.BlendOp = D3D12_BLEND_OP_ADD;
 	transparencyBlendDesc.SrcBlendAlpha = D3D12_BLEND_ONE;
 	transparencyBlendDesc.DestBlendAlpha = D3D12_BLEND_ZERO;
 	transparencyBlendDesc.BlendOpAlpha = D3D12_BLEND_OP_ADD;
 	transparencyBlendDesc.LogicOp = D3D12_LOGIC_OP_NOOP;
-	transparencyBlendDesc.RenderTargetWriteMask = 0;
+	transparencyBlendDesc.RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
 	transparentPsoDesc.BlendState.RenderTarget[0] = transparencyBlendDesc;
 	ThrowIfFailed(md3dDevice->CreateGraphicsPipelineState(&transparentPsoDesc, IID_PPV_ARGS(&mPSOs["transparent"])))
+
+	D3D12_GRAPHICS_PIPELINE_STATE_DESC alphaTestedPsoDesc = opaquePsoDesc;
+	alphaTestedPsoDesc.PS = {
+		reinterpret_cast<BYTE *>(mShaders["alphaTestedPS"]->GetBufferPointer()),
+		mShaders["alphaTestedPS"]->GetBufferSize()
+	};
+	alphaTestedPsoDesc.RasterizerState.CullMode = D3D12_CULL_MODE_NONE;
+	ThrowIfFailed(md3dDevice->CreateGraphicsPipelineState(&alphaTestedPsoDesc, IID_PPV_ARGS(&mPSOs["alphaTested"])))
 }
 
 void BoxApp::BuildFrameResources()
@@ -845,10 +884,10 @@ void BoxApp::BuildShapeGeometry1() {
 	auto geo = std::make_unique<MeshGeometry>();
 	geo->Name = "shapeGeo";
 
-	ThrowIfFailed(D3DCreateBlob(vbByteSize, &geo->VertexBufferCPU));
+	ThrowIfFailed(D3DCreateBlob(vbByteSize, &geo->VertexBufferCPU))
 	CopyMemory(geo->VertexBufferCPU->GetBufferPointer(), vertices.data(), vbByteSize);
 
-	ThrowIfFailed(D3DCreateBlob(ibByteSize, &geo->IndexBufferCPU));
+	ThrowIfFailed(D3DCreateBlob(ibByteSize, &geo->IndexBufferCPU))
 	CopyMemory(geo->IndexBufferCPU->GetBufferPointer(), indices.data(), ibByteSize);
 
 	geo->VertexBufferGPU = d3dUtil::CreateDefaultBuffer(md3dDevice.Get(),
@@ -879,12 +918,13 @@ void BoxApp::BuildRenderItems()
 	XMStoreFloat4x4(&boxRitem->World, XMMatrixScaling(2.0f, 2.0f, 2.0f) * XMMatrixTranslation(0.0f, 0.5f, 0.0f));
 	boxRitem->ObjCBIndex = 0;
 	boxRitem->Geo = mGeometries["shapeGeo"].get();
-	boxRitem->Mat = mMaterials["stone"].get();
+	boxRitem->Mat = mMaterials["grass"].get();
 	boxRitem->PrimitiveType = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
 	boxRitem->IndexCount = boxRitem->Geo->DrawArgs["box"].IndexCount;
 	boxRitem->StartIndexLocation = boxRitem->Geo->DrawArgs["box"].StartIndexLocation;
 	boxRitem->BaseVertexLocation = boxRitem->Geo->DrawArgs["box"].BaseVertexLocation;
-	mAllRitems.push_back(std::move(boxRitem));
+	mAllRitems.push_back(std::make_unique<RenderItem>(*boxRitem));
+	mAlphaTestArr.push_back(std::move(boxRitem));
 
 	auto gridItem = std::make_unique<RenderItem>();
 	gridItem->World = MathHelper::Identity4x4();
@@ -895,13 +935,14 @@ void BoxApp::BuildRenderItems()
 	gridItem->IndexCount = gridItem->Geo->DrawArgs["grid"].IndexCount;
 	gridItem->StartIndexLocation = gridItem->Geo->DrawArgs["grid"].StartIndexLocation;
 	gridItem->BaseVertexLocation = gridItem->Geo->DrawArgs["grid"].BaseVertexLocation;
-	mAllRitems.push_back(std::move(gridItem));
+	mAllRitems.push_back(std::make_unique<RenderItem>(*gridItem));
+	mOpaqueArr.push_back(std::move(gridItem));
 
 	auto wavesRitem = std::make_unique<RenderItem>();
 	wavesRitem->World = MathHelper::Identity4x4();
 	XMStoreFloat4x4(&wavesRitem->TexTransform, XMMatrixScaling(5.0f, 5.0f, 1.0f));
 	XMStoreFloat4x4(&wavesRitem->World, XMMatrixTranslation(0.0f, 1.0f, 0.0f));
-	wavesRitem->ObjCBIndex = 0;
+	wavesRitem->ObjCBIndex = 2;
 	wavesRitem->Mat = mMaterials["water"].get();
 	wavesRitem->Geo = mGeometries["waterGeo"].get();
 	wavesRitem->PrimitiveType = D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
@@ -909,11 +950,12 @@ void BoxApp::BuildRenderItems()
 	wavesRitem->StartIndexLocation = wavesRitem->Geo->DrawArgs["grid"].StartIndexLocation;
 	wavesRitem->BaseVertexLocation = wavesRitem->Geo->DrawArgs["grid"].BaseVertexLocation;
 	mWavesRitem = wavesRitem.get();
-	mAllRitems.push_back(std::move(wavesRitem));
+	mAllRitems.push_back(std::make_unique<RenderItem>(*wavesRitem));
+	mTransparentArr.push_back(std::move(wavesRitem));
 
 
 
-	UINT objCBIndex = 2;
+	UINT objCBIndex = 3;
 
 	for (int i = 0; i < 5; ++i)
 	{
@@ -963,15 +1005,37 @@ void BoxApp::BuildRenderItems()
 		rightSphereRitem->IndexCount = rightSphereRitem->Geo->DrawArgs["sphere"].IndexCount;
 		rightSphereRitem->StartIndexLocation = rightSphereRitem->Geo->DrawArgs["sphere"].StartIndexLocation;
 		rightSphereRitem->BaseVertexLocation = rightSphereRitem->Geo->DrawArgs["sphere"].BaseVertexLocation;
-	
-		mAllRitems.push_back(std::move(leftCylRitem));
-		mAllRitems.push_back(std::move(rightCylRitem));
-		mAllRitems.push_back(std::move(leftSphereRitem));
-		mAllRitems.push_back(std::move(rightSphereRitem));
-	}
 
-	for (auto& e : mAllRitems)
+
+
+		mAllRitems.push_back(std::make_unique<RenderItem>(*leftCylRitem));
+		mAllRitems.push_back(std::make_unique<RenderItem>(*rightCylRitem));
+		mAllRitems.push_back(std::make_unique<RenderItem>(*leftSphereRitem));
+		mAllRitems.push_back(std::make_unique<RenderItem>(*rightSphereRitem));
+
+		mOpaqueArr.push_back(std::move(leftCylRitem));
+		mOpaqueArr.push_back(std::move(rightCylRitem));
+		mOpaqueArr.push_back(std::move(leftSphereRitem));
+		mOpaqueArr.push_back(std::move(rightSphereRitem));
+	}
+	// for (auto &e : mOpaqueArr) {
+	// 	auto eCopy = std::make_unique<RenderItem>(*e);
+	// 	mAllRitems.push_back(eCopy);
+	// }
+	// for (auto &e : mTransparentArr) {
+	// 	auto eCopy = std::make_unique<RenderItem>(*e);
+	// 	mAllRitems.push_back(eCopy);
+	// }
+	// for (auto &e : mAlphaTestArr) {
+	// 	auto eCopy = std::make_unique<RenderItem>(*e);
+	// 	mAllRitems.push_back(eCopy);
+	// }
+	for (auto &e : mOpaqueArr)
 		mOpaqueRitems.push_back(e.get());
+	for (auto &e : mTransparentArr)
+		mTransparentRitems.push_back(e.get());
+	for (auto &e : mAlphaTestArr)
+		mAlphaTestRitems.push_back(e.get());
 }
 
 float BoxApp::GetHillsHeight(float x, float z) const {
@@ -1009,7 +1073,7 @@ void BoxApp::BuildWavesGeometryBuffers() {
 	geo->VertexBufferCPU = nullptr;
 	geo->VertexBufferGPU = nullptr;
 
-	ThrowIfFailed(D3DCreateBlob(ibByteSize, &geo->IndexBufferCPU));
+	ThrowIfFailed(D3DCreateBlob(ibByteSize, &geo->IndexBufferCPU))
 	CopyMemory(geo->IndexBufferCPU->GetBufferPointer(), indices.data(), ibByteSize);
 
 	geo->IndexBufferGPU = d3dUtil::CreateDefaultBuffer(md3dDevice.Get(),
@@ -1041,7 +1105,7 @@ void BoxApp::BuildMaterials() {
 
 	auto stone = std::make_unique<Material>();
 	stone->Name = "stone";
-	stone->MatCBIndex = 0;
+	stone->MatCBIndex = 1;
 	stone->DiffuseAlbedo = XMFLOAT4(0.2f, 0.6f, 0.2f, 1.0f);
 	stone->FresnelR0 = XMFLOAT3(0.01f, 0.01f, 0.01f);
 	stone->Roughness = 0.125f;
@@ -1051,7 +1115,7 @@ void BoxApp::BuildMaterials() {
 	// 当前这种水的材质定义不好
 	auto water = std::make_unique<Material>();
 	water->Name = "water";
-	water->MatCBIndex = 1;
+	water->MatCBIndex = 2;
 	water->DiffuseAlbedo = XMFLOAT4(0.0f, 0.2f, 0.6f, 1.0f);
 	water->FresnelR0 = XMFLOAT3(0.1f, 0.1f, 0.1f);
 	water->Roughness = 0.0f;
@@ -1066,11 +1130,11 @@ void BoxApp::BuildMaterials() {
 void BoxApp::LoadTextures() {
 	auto woodCrateTex = std::make_unique<Texture>();
 	woodCrateTex->Name = "woodCrateTex";
-	woodCrateTex->Filename = L"Textures/bricks.dds";
+	woodCrateTex->Filename = L"Textures/WireFence.dds";
 	// 上传GPU
 	ThrowIfFailed(DirectX::CreateDDSTextureFromFile12(md3dDevice.Get(),
 			mCommandList.Get(), woodCrateTex->Filename.c_str(),
-			woodCrateTex->Resource, woodCrateTex->UploadHeap));
+			woodCrateTex->Resource, woodCrateTex->UploadHeap))
 
 	auto woodCrateTex2 = std::make_unique<Texture>();
 	woodCrateTex2->Name = "woodCrateTex2";
@@ -1078,7 +1142,7 @@ void BoxApp::LoadTextures() {
 	// 上传GPU
 	ThrowIfFailed(DirectX::CreateDDSTextureFromFile12(md3dDevice.Get(),
 			mCommandList.Get(), woodCrateTex2->Filename.c_str(),
-			woodCrateTex2->Resource, woodCrateTex2->UploadHeap));
+			woodCrateTex2->Resource, woodCrateTex2->UploadHeap))
 
 	auto water = std::make_unique<Texture>();
 	water->Name = "water";
