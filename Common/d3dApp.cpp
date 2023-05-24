@@ -251,13 +251,17 @@ void D3DApp::OnResize()
 	mScissorRect = { 0,0,mClientWidth,mClientHeight };
 }
 
+#ifdef __IMGUI
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
+#endif
 
 LRESULT D3DApp::MsgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
+#ifdef __IMGUI
 	if (ImGui_ImplWin32_WndProcHandler(hwnd, msg, wParam, lParam))
 		return true;
 	const ImGuiIO imio = ImGui::GetIO();
+#endif
 	switch (msg)
 	{
 		// 窗口被激活或反激活时,WM_ACTIVATE被发送
@@ -366,7 +370,9 @@ LRESULT D3DApp::MsgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 		OnMouseUp(wParam, GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam));
 		return 0;
 	case WM_MOUSEMOVE:
+#ifdef __IMGUI
 		if (imio.WantCaptureMouse) break;
+#endif
 		OnMouseMove(wParam, GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam));
 		return 0;
 	case WM_KEYUP:
@@ -434,7 +440,10 @@ bool D3DApp::InitMainWindow()
 	// 显示并更新窗口
 	ShowWindow(mhMainWnd, SW_SHOW);
 	UpdateWindow(mhMainWnd);
+#ifdef __IMGUI
 	ImGui_ImplWin32_Init(mhMainWnd);
+#endif
+
 	return true;
 }
 
@@ -502,9 +511,11 @@ bool D3DApp::InitDirect3D()
 	CreateSwapChain();
 	// 6,创建应用程序所需的描述符堆	
 	CreateRtvAndDsvDescriptorHeaps();
-
+#ifdef __IMGUI
 	ImGui_ImplDX12_Init(md3dDevice.Get(), 3, DXGI_FORMAT_R8G8B8A8_UNORM, mImGUIHeap.Get(),
 			mImGUIHeap->GetCPUDescriptorHandleForHeapStart(), mImGUIHeap->GetGPUDescriptorHandleForHeapStart());
+#endif
+
 	// 7,调整后台缓冲区的大小,并为它创建渲染目标视图RTV
 	// 8,创建深度/模板缓冲区及与之关联的深度/模板视图DSV
 	// 9,设置视口(viewport)和裁剪矩形(scissor rectangle)
@@ -719,8 +730,9 @@ void D3DApp::LogOutputDisplayModes(IDXGIOutput* output, DXGI_FORMAT format)
 	}
 }
 
-
+#ifdef __IMGUI
 ImguiManager::ImguiManager() {
+
 	IMGUI_CHECKVERSION();
 	ImGui::CreateContext();
 	ImGuiIO &io = ImGui::GetIO();
@@ -732,3 +744,4 @@ ImguiManager::~ImguiManager() {
 	ImGui_ImplWin32_Shutdown();
 	ImGui::DestroyContext();
 }
+#endif

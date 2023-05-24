@@ -55,7 +55,12 @@ struct cbPass {
 	float4 gAmbientLight;
 	Light gLights[MaxLights];
 	float4 g_Color;
-	uint g_UseCustomColor;
+	float g_UseCustomColor;
+	float3 cbPerObjectPad2;
+	float4 gFogColor;
+	float gFogRange;
+	float gFogStart;
+	float2 cbPerObjectPad3;
 };
 ConstantBuffer<cbPass> gCBPass : register(b1);
 
@@ -113,8 +118,10 @@ float4 PS(VertexOut pin) : SV_Target {
 
 	pin.NormalW = normalize(pin.NormalW);
 
-	// Vector from point being lit to eye.
+	// Vector from point being lit to eye
 	float3 toEyeW = normalize(gCBPass.gEyePow - pin.PosW);
+	float distToEye = length(toEyeW);
+	toEyeW /= distToEye; // normalize
 
 	// Indirect lighting.
 	float4 ambient = gCBPass.gAmbientLight * diffuseAlbedo;
@@ -125,8 +132,14 @@ float4 PS(VertexOut pin) : SV_Target {
 	float3 shadowFactor = 1.0f;
 	float4 directLight = ComputeLighting(gCBPass.gLights, mat, pin.PosW, pin.NormalW, toEyeW, shadowFactor);
 	float4 litColor = ambient + directLight;
+#ifdef FOG
+	float fogAmount = saturate((distToEye - gCBPass.gFogStart) / gCBPass.gFogRange);
+	litColor = lerp(litColor, gCBPass.gFogColor, fogAmount);
+	// return float4(1.0, 0.0, 0.0, 1.0);
+#endif
 	litColor.a = diffuseAlbedo.a;
 	// return litColor;
 	// return gCBPass.g_UseCustomColor ? float4(1.0, 0.0, 1.0, 1.0) : litColor;
-	return gCBPass.g_UseCustomColor ? gCBPass.g_Color : litColor;
+	// return gCBPass.g_UseCustomColor ? gCBPass.g_Color : litColor;
+	return litColor;
 }

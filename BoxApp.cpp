@@ -94,7 +94,9 @@ void BoxApp::Update(const GameTimer& gt)
 		WaitForSingleObject(eventHandle, INFINITE);
 		CloseHandle(eventHandle);
 	}
+#ifdef __IMGUI
 	UpdateImGui(gt, mMainPassCB);
+#endif
 	AnimateMaterial(gt);
 	UpdateObjectCBs(gt);
 	UpdateMainPassCB(gt);
@@ -102,7 +104,7 @@ void BoxApp::Update(const GameTimer& gt)
 	UpdateWaves(gt);
 }
 
-
+#ifdef __IMGUI
 void BoxApp::UpdateImGui(const GameTimer &gt, PassConstants& buffer) {
 	static bool animateCube = true, customColor = false;
 	ImGui_ImplDX12_NewFrame();
@@ -149,7 +151,7 @@ void BoxApp::UpdateImGui(const GameTimer &gt, PassConstants& buffer) {
 	buffer.useCustomColor = customColor ? 1 : 0;
 	buffer.color = XMFLOAT4(gColor[0], gColor[1], gColor[2], 1.0);
 }
-
+#endif
 void BoxApp::UpdateObjectCBs(const GameTimer& gt)
 {
 	auto currObjectCB = mCurrFrameResources->ObjectCB.get();
@@ -303,15 +305,18 @@ void BoxApp::Draw(const GameTimer& gt)
 			ThrowIfFailed(mCommandList->Reset(cmdListAlloc.Get(), mPSOs["opaque"].Get()));
 			break;
 	}
+#ifdef __IMGUI
 	ImGui::Render();
+#endif
 
 	mCommandList->RSSetViewports(1, &mScreenViewport);
 	mCommandList->RSSetScissorRects(1, &mScissorRect);
 
 	mCommandList->ResourceBarrier(1, get_rvalue_ptr(CD3DX12_RESOURCE_BARRIER::Transition(CurrentBackBuffer(),
 		D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET)));
+	mCommandList->ClearRenderTargetView(CurrentBackBufferView(), (float *)&mMainPassCB.FogColor, 0, nullptr);
 
-	mCommandList->ClearRenderTargetView(CurrentBackBufferView(), Colors::LightSteelBlue, 0, nullptr);
+	// mCommandList->ClearRenderTargetView(CurrentBackBufferView(), Colors::LightSteelBlue, 0, nullptr);
 	mCommandList->ClearDepthStencilView(DepthStencilView(), D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL, 1.0f, 0, 0, nullptr);
 
 	mCommandList->OMSetRenderTargets(1, get_rvalue_ptr(CurrentBackBufferView()), true, get_rvalue_ptr(DepthStencilView()));
@@ -336,8 +341,9 @@ void BoxApp::Draw(const GameTimer& gt)
 	DrawRenderItems(mCommandList.Get(), mTransparentRitems);
 
 	mCommandList->SetDescriptorHeaps(1, mImGUIHeap.GetAddressOf());
+#ifdef __IMGUI
 	ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), mCommandList.Get());
-
+#endif
 	mCommandList->ResourceBarrier(1, get_rvalue_ptr(CD3DX12_RESOURCE_BARRIER::Transition(CurrentBackBuffer(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT)));
 	ThrowIfFailed(mCommandList->Close());
 
@@ -702,12 +708,19 @@ void BoxApp::BuildRootSignature() {
 
 void BoxApp::BuildShadersAndInputLayout()
 {
+	const D3D_SHADER_MACRO defines[] = {
+		"FOG", "1",
+		NULL, NULL
+	};
+
 	const D3D_SHADER_MACRO alphaTestDefines[] = {
+		"FOG", "1",
 		"ALPHA_TEST", "1",
 		NULL, NULL
 	};
+	
 	mShaders["standardVS"] = d3dUtil::CompileShader(L"Shaders\\color.hlsl", nullptr, "VS", "vs_5_1");
-	mShaders["opaquePS"] = d3dUtil::CompileShader(L"Shaders\\color.hlsl", nullptr, "PS", "ps_5_1");
+	mShaders["opaquePS"] = d3dUtil::CompileShader(L"Shaders\\color.hlsl", defines, "PS", "ps_5_1");
 	mShaders["alphaTestedPS"] = d3dUtil::CompileShader(L"Shaders\\color.hlsl", alphaTestDefines, "PS", "ps_5_1");
 	// LPCSTR SemanticName; UINT SemanticIndex; DXGI_FORMAT Format; UINT InputSlot; UINT AlignedByteOffset; D3D12_INPUT_CLASSIFICATION InputSlotClass; UINT InstanceDataStepRate; D3D12_INPUT_ELEMENT_DESC;
 	mInputLayout = {
@@ -761,8 +774,8 @@ void BoxApp::BuildPSO()
 	D3D12_RENDER_TARGET_BLEND_DESC transparencyBlendDesc;
 	transparencyBlendDesc.BlendEnable = true;
 	transparencyBlendDesc.LogicOpEnable = false;
-	transparencyBlendDesc.SrcBlend = D3D12_BLEND_SRC_COLOR;
-	transparencyBlendDesc.DestBlend = D3D12_BLEND_INV_SRC_COLOR;
+	transparencyBlendDesc.SrcBlend = D3D12_BLEND_SRC_ALPHA;
+	transparencyBlendDesc.DestBlend = D3D12_BLEND_INV_SRC_ALPHA;
 	transparencyBlendDesc.BlendOp = D3D12_BLEND_OP_ADD;
 	transparencyBlendDesc.SrcBlendAlpha = D3D12_BLEND_ONE;
 	transparencyBlendDesc.DestBlendAlpha = D3D12_BLEND_ZERO;
@@ -770,7 +783,7 @@ void BoxApp::BuildPSO()
 	transparencyBlendDesc.LogicOp = D3D12_LOGIC_OP_NOOP;
 	transparencyBlendDesc.RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
 	transparentPsoDesc.BlendState.RenderTarget[0] = transparencyBlendDesc;
-	ThrowIfFailed(md3dDevice->CreateGraphicsPipelineState(&transparentPsoDesc, IID_PPV_ARGS(&mPSOs["transparent"])))
+	ThrowIfFailed(md3dDevice->CreateGraphicsPipelineState(&transparentPsoDesc, IID_PPV_ARGS(&mPSOs["transparent"])));
 
 	D3D12_GRAPHICS_PIPELINE_STATE_DESC alphaTestedPsoDesc = opaquePsoDesc;
 	alphaTestedPsoDesc.PS = {
@@ -929,6 +942,7 @@ void BoxApp::BuildRenderItems()
 	auto gridItem = std::make_unique<RenderItem>();
 	gridItem->World = MathHelper::Identity4x4();
 	gridItem->ObjCBIndex = 1;
+	XMStoreFloat4x4(&gridItem->World, XMMatrixScaling(20.0f, 20.0f, 20.0f) * XMMatrixTranslation(0.0f, 0.5f, 0.0f));
 	gridItem->Geo = mGeometries["shapeGeo"].get();
 	gridItem->Mat = mMaterials["stone"].get();
 	gridItem->PrimitiveType = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
@@ -1116,7 +1130,7 @@ void BoxApp::BuildMaterials() {
 	auto water = std::make_unique<Material>();
 	water->Name = "water";
 	water->MatCBIndex = 2;
-	water->DiffuseAlbedo = XMFLOAT4(0.0f, 0.2f, 0.6f, 1.0f);
+	water->DiffuseAlbedo = XMFLOAT4(1.0f, 1.0f, 1.0f, 0.5f);
 	water->FresnelR0 = XMFLOAT3(0.1f, 0.1f, 0.1f);
 	water->Roughness = 0.0f;
 	water->DiffuseSrvHeapIndex = 2;

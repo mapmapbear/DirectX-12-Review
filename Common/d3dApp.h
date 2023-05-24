@@ -8,21 +8,24 @@
 #include "d3dUtil.h"
 #include "GameTimer.h"
 
+#ifdef __IMGUI
 // include ImGui
 #include <imgui.h>
 #include <imgui_impl_dx12.h>
 #include <imgui_impl_win32.h>
-
+#endif
 // 链接DirectX库
 #pragma comment(lib,"d3dcompiler.lib")
 #pragma comment(lib, "D3D12.lib")
 #pragma comment(lib, "dxgi.lib")
 
+#ifdef __IMGUI
 class ImguiManager {
 public:
 	ImguiManager();
 	~ImguiManager();
 };
+#endif
 
 class D3DApp
 {
@@ -87,7 +90,10 @@ protected:
 protected:
 
 	static D3DApp* mApp;
+#ifdef __IMGUI
 	ImguiManager imguiManager;
+#endif
+
 	HINSTANCE	mhAppInst = nullptr;	// 应用实例句柄
 	HWND		mhMainWnd = nullptr;	// 主窗口句柄
 	bool		mAppPaused = false;		// 程序是否暂停
