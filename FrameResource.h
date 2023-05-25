@@ -35,9 +35,9 @@ struct PassConstants
 	float useCustomColor;
 	DirectX::XMFLOAT3 cbPerObjectPad2 = { 0.0f, 0.0f, 0.0f};
 	DirectX::XMFLOAT4 FogColor = { 0.7f, 0.7f, 0.7f, 1.0f };
+	float gFogRange = 50.0f;
 	float gFogStart = 5.0f;
-	float gFogRange = 150.0f;
-	DirectX::XMFLOAT2 cbPerObjectPad3 = {0.0, 0.0f};
+	DirectX::XMFLOAT2 cbPerObjectPad3 = { 0.0, 0.0f };
 };
 
 struct Vertex
