@@ -5,7 +5,7 @@ VisualStudioVersion = 17.3.32804.467
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Box", "Box.vcxproj", "{F1A28D48-2CA7-49F7-B152-2B139B571E50}"
 EndProject
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "IMGUI", "thirdparty\imgui\IMGUI\IMGUI.vcxproj", "{0B8B4D57-D1D7-4CCD-899B-A59707B1304A}"
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Imgui", "thirdparty\imgui\IMGUI\IMGUI.vcxproj", "{0B8B4D57-D1D7-4CCD-899B-A59707B1304A}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

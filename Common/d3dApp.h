@@ -1,5 +1,7 @@
 ﻿#pragma once
 
+#define __IMGUI 1
+
 #if defined(DEBUG) || defined(_DEBUG)
 #define _CRTDBG_MAP_ALLOC
 #include <crtdbg.h>
@@ -126,7 +128,10 @@ protected:
 
 	Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> mRtvHeap; // RTV描述符堆
 	Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> mDsvHeap; // DSV描述符堆
+#ifdef __IMGUI
 	Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> mImGUIHeap; // IMGUI_SRV描述符堆
+#endif
+
 	D3D12_VIEWPORT mScreenViewport; // 视口
 	D3D12_RECT mScissorRect; // 裁剪矩形
 

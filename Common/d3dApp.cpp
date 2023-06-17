@@ -107,21 +107,8 @@ bool D3DApp::Initialize()
 		return false;
 
 	OnResize();
-	// if (!InitImGui())
-	// 	return false;
 	return true;
 }
-
-bool D3DApp::InitImGui() {
-	// IMGUI_CHECKVERSION();
-	// ImGui::CreateContext();
-	// ImGuiIO &io = ImGui::GetIO();
-	// (void)io;
-	// ImGui::StyleColorsDark();
-	
-	return true;
-}
-
 
 void D3DApp::CreateRtvAndDsvDescriptorHeaps()
 {
@@ -143,6 +130,7 @@ void D3DApp::CreateRtvAndDsvDescriptorHeaps()
 	ThrowIfFailed(md3dDevice->CreateDescriptorHeap(
 		&dsvHeapDesc, IID_PPV_ARGS(mDsvHeap.GetAddressOf())));
 
+#ifdef __IMGUI
 	D3D12_DESCRIPTOR_HEAP_DESC SrvHeapDesc;
 	SrvHeapDesc.NumDescriptors = 1;
 	SrvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
@@ -150,6 +138,7 @@ void D3DApp::CreateRtvAndDsvDescriptorHeaps()
 	SrvHeapDesc.NodeMask = 0;
 	ThrowIfFailed(md3dDevice->CreateDescriptorHeap(
 			&SrvHeapDesc, IID_PPV_ARGS(mImGUIHeap.GetAddressOf())));
+#endif
 }
 
 void D3DApp::OnResize()

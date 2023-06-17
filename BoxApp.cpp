@@ -3,7 +3,6 @@
 // RTV,DSV				: 有描述符堆, 有描述符(视图)
 // 顶点缓冲区,索引缓冲区: 无描述符堆, 有描述符(视图), 默认堆, 通过输入布局描述指定着色器寄存器
 // 常量缓冲区			: 有描述符堆, 有描述符(视图), 上传堆, 通过根签名指定着色器寄存器, CPU每帧更新
-
 #include "BoxApp.h"
 
 const int gNumFrameResources = 3;
@@ -340,8 +339,9 @@ void BoxApp::Draw(const GameTimer& gt)
 	mCommandList->SetPipelineState(mPSOs["transparent"].Get());
 	DrawRenderItems(mCommandList.Get(), mTransparentRitems);
 
-	mCommandList->SetDescriptorHeaps(1, mImGUIHeap.GetAddressOf());
 #ifdef __IMGUI
+	mCommandList->SetDescriptorHeaps(1, mImGUIHeap.GetAddressOf());
+
 	ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), mCommandList.Get());
 #endif
 	mCommandList->ResourceBarrier(1, get_rvalue_ptr(CD3DX12_RESOURCE_BARRIER::Transition(CurrentBackBuffer(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT)));
