@@ -1,4 +1,4 @@
-# LearnDirectX-12
+# DirectX-12 Seed
 
 ## build 
 
