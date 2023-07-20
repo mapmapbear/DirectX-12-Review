@@ -10,7 +10,7 @@ Visual Stadio 2022 X64
 
 
 
-## BUG Log
+## Dev BUG Log
 
 ### 1. Shader Model 5.0 与 Shader Model 5.1
 
@@ -36,4 +36,12 @@ ConstantBuffer<ObjectConstants> gObjConstants : register(b0);
 ```
 
 记得在Shader编译的时候选择合适的Shader Model版本, 否则会引发一些DX程序的异常报错
+
+
+#### 2. XMake 生成VS工程
+``` shell
+xmake project -k vs2022 -m "debug,release" slutionDir
+```
+
+
 
