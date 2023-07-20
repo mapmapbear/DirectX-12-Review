@@ -5,7 +5,8 @@
 Visual Stadio 2022 X64
 
 
-
+## Release Log
+23-7-20 更新了XMake分支, 弃用原来的VS框架, 改为XMake构建
 ## BUG Log
 
 ### 1. Shader Model 5.0 与 Shader Model 5.1
