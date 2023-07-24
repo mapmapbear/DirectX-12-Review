@@ -14,7 +14,7 @@ extern const int gNumFrameResources;
 struct RenderItem
 {
 	RenderItem() = default;
-
+	std::string Name = "";
 	XMFLOAT4X4 World = MathHelper::Identity4x4();
 	XMFLOAT4X4 TexTransform = MathHelper::Identity4x4();
 
@@ -51,6 +51,7 @@ private:
 	void UpdateImGui(const GameTimer &gt, PassConstants& buffer);
 	void UpdateObjectCBs(const GameTimer& gt);
 	void UpdateMainPassCB(const GameTimer& gt);
+	void UpdateReflectedPassCB(const GameTimer &gt);
 	void UpdateCamera(const GameTimer& gt);
 	void UpdateWaves(const GameTimer &gt);
 	void OnKeyboardInput(const GameTimer &gt);
@@ -111,11 +112,18 @@ private:
 	std::vector<std::unique_ptr<RenderItem>> mOpaqueArr;
 	std::vector<std::unique_ptr<RenderItem>> mTransparentArr;
 	std::vector<std::unique_ptr<RenderItem>> mAlphaTestArr;
+	std::vector<std::unique_ptr<RenderItem>> mStencilMirrorsArr;
+	std::vector<std::unique_ptr<RenderItem>> mRelectedArr;
 
 	std::vector<RenderItem*> mOpaqueRitems;
 	std::vector<RenderItem*> mTransparentRitems;
 	std::vector<RenderItem *> mAlphaTestRitems;
+	std::vector<RenderItem *> mStencilMirrorsRitems;
+	std::vector<RenderItem *> mRelectedRitems;
+
 	PassConstants mMainPassCB;
+	PassConstants mReflectedPassCB;
+
 	XMFLOAT3 mEyePos = { 0.0f, 0.0f, 0.0f };
 
 	std::unordered_map<std::string, std::unique_ptr<MeshGeometry>> mGeometries;
