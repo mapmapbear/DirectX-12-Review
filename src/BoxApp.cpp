@@ -354,15 +354,16 @@ void BoxApp::Draw(const GameTimer& gt)
 
 	DrawRenderItems(mCommandList.Get(), mOpaqueRitems);
 
-	mCommandList->SetPipelineState(mPSOs["alphaTested"].Get());
-	DrawRenderItems(mCommandList.Get(), mAlphaTestRitems);
-
+	// Draw AlphaTest Render Queue
+	// mCommandList->SetPipelineState(mPSOs["alphaTested"].Get());
+	// DrawRenderItems(mCommandList.Get(), mAlphaTestRitems);
+	
 	mCommandList->OMSetStencilRef(1);
 	mCommandList->SetPipelineState(mPSOs["markStencilMirrors"].Get());
 	DrawRenderItems(mCommandList.Get(), mStencilMirrorsRitems);
-
+	//
 	UINT passCBByteSize = d3dUtil::CalcConstantBufferByteSize(sizeof(PassConstants));
-	mCommandList->SetGraphicsRootConstantBufferView(2, passCB->GetGPUVirtualAddress() + passCBByteSize);
+	mCommandList->SetGraphicsRootConstantBufferView(2, passCB->GetGPUVirtualAddress() + 1 * passCBByteSize);
 	mCommandList->SetPipelineState(mPSOs["drawStencilReflections"].Get());
 	DrawRenderItems(mCommandList.Get(), mRelectedRitems);
 
@@ -796,7 +797,6 @@ void BoxApp::BuildPSO()
 		mShaders["opaquePS"]->GetBufferSize()
 	};
 	opaquePsoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
-
 	opaquePsoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
 	opaquePsoDesc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
 	opaquePsoDesc.SampleMask = UINT_MAX;
@@ -841,23 +841,22 @@ void BoxApp::BuildPSO()
 	ThrowIfFailed(md3dDevice->CreateGraphicsPipelineState(&alphaTestedPsoDesc, IID_PPV_ARGS(&mPSOs["alphaTested"])))
 
 	CD3DX12_BLEND_DESC mirrorBlendState(D3D12_DEFAULT);
-	mirrorBlendState.RenderTarget[0].RenderTargetWriteMask = 0; // 禁止写入到后台缓冲区
+	mirrorBlendState.RenderTarget[0].RenderTargetWriteMask = 0;
 
 	D3D12_DEPTH_STENCIL_DESC mirrorDSS;
-	mirrorDSS.DepthEnable = true; // 开启深度缓冲
-	mirrorDSS.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ZERO; // 禁止对深度缓冲区的写操作,但仍可执行深度测试
-	mirrorDSS.DepthFunc = D3D12_COMPARISON_FUNC_LESS; // 深度测试比较函数 <
-	mirrorDSS.StencilEnable = true; // 开启模板测试
-	mirrorDSS.StencilReadMask = 0xff; // 设置模板测试屏蔽的位,这里不屏蔽
-	mirrorDSS.StencilWriteMask = 0xff; // 设置屏蔽写入的位, eg:0x0f防止前4位数据被改写
-	// 镜面可见部分的对应像素为1,其他像素皆为0
-	// 正面朝向的三角形进行何种模板运算
-	mirrorDSS.FrontFace.StencilFailOp = D3D12_STENCIL_OP_KEEP; // 当模板测试失败时,不修改模板缓冲区,保持当前的数据
-	mirrorDSS.FrontFace.StencilDepthFailOp = D3D12_STENCIL_OP_KEEP; // 通过模板测试,但是深度测试失败,模板缓冲区 Keep 0(被骷髅挡住)
-	mirrorDSS.FrontFace.StencilPassOp = D3D12_STENCIL_OP_REPLACE; // 将模板缓冲区中的元素,替换为模板参考值 StencilRef(1)
-	mirrorDSS.FrontFace.StencilFunc = D3D12_COMPARISON_FUNC_ALWAYS; // 模板测试比较函数,这里总是返回true
+	mirrorDSS.DepthEnable = true;
+	mirrorDSS.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ZERO;
+	mirrorDSS.DepthFunc = D3D12_COMPARISON_FUNC_LESS;
+	mirrorDSS.StencilEnable = true;
+	mirrorDSS.StencilReadMask = 0xff;
+	mirrorDSS.StencilWriteMask = 0xff;
 
-	// 不渲染背面,所以不关心这些参数
+	mirrorDSS.FrontFace.StencilFailOp = D3D12_STENCIL_OP_KEEP;
+	mirrorDSS.FrontFace.StencilDepthFailOp = D3D12_STENCIL_OP_KEEP;
+	mirrorDSS.FrontFace.StencilPassOp = D3D12_STENCIL_OP_REPLACE;
+	mirrorDSS.FrontFace.StencilFunc = D3D12_COMPARISON_FUNC_ALWAYS;
+
+	// We are not rendering backfacing polygons, so these settings do not matter.
 	mirrorDSS.BackFace.StencilFailOp = D3D12_STENCIL_OP_KEEP;
 	mirrorDSS.BackFace.StencilDepthFailOp = D3D12_STENCIL_OP_KEEP;
 	mirrorDSS.BackFace.StencilPassOp = D3D12_STENCIL_OP_REPLACE;
@@ -1211,7 +1210,8 @@ void BoxApp::BuildRenderItems()
 	// 将每一个物体都存到 mAllRitems, mOpaqueRitems 中,相同物体的顶点/索引偏移相同,但是它们的世界矩阵不同,ObjIndex++. 
 	// 渲染对象中存储了 World, ObjCBIndex, Geo, PrimitiveType, IndexCount, StartIndexLocation, BaseVertexLocation
 	auto boxRitem = std::make_unique<RenderItem>();
-	XMStoreFloat4x4(&boxRitem->World, XMMatrixScaling(2.0f, 2.0f, 2.0f) * XMMatrixTranslation(0.0f, 0.5f, 0.0f));
+	boxRitem->World = MathHelper::Identity4x4();
+	// XMStoreFloat4x4(&boxRitem->World, XMMatrixScaling(1.0f, 1.0f, 1.0f) * XMMatrixTranslation(0.0f, 0.5f, 0.0f));
 	boxRitem->ObjCBIndex = 0;
 	boxRitem->Geo = mGeometries["shapeGeo"].get();
 	boxRitem->Mat = mMaterials["grass"].get();
@@ -1226,7 +1226,7 @@ void BoxApp::BuildRenderItems()
 	auto gridItem = std::make_unique<RenderItem>();
 	gridItem->World = MathHelper::Identity4x4();
 	gridItem->ObjCBIndex = 1;
-	XMStoreFloat4x4(&gridItem->World, XMMatrixScaling(20.0f, 20.0f, 20.0f) * XMMatrixTranslation(0.0f, 0.5f, 0.0f));
+	XMStoreFloat4x4(&gridItem->World, XMMatrixScaling(1.0f, 1.0f, 1.0f) * XMMatrixTranslation(0.0f, 0.5f, 0.0f));
 	gridItem->Geo = mGeometries["shapeGeo"].get();
 	gridItem->Mat = mMaterials["stone"].get();
 	gridItem->PrimitiveType = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
@@ -1257,69 +1257,69 @@ void BoxApp::BuildRenderItems()
 
 	UINT objCBIndex = 3;
 
-	for (int i = 0; i < 5; ++i)
-	{
-		auto leftCylRitem = std::make_unique<RenderItem>();
-		auto rightCylRitem = std::make_unique<RenderItem>();
-		auto leftSphereRitem = std::make_unique<RenderItem>();
-		auto rightSphereRitem = std::make_unique<RenderItem>();
-	
-		XMMATRIX leftCylWorld = XMMatrixTranslation(-5.0f, 1.5f, -10.0f + i * 5.0f);
-		XMMATRIX rightCylWorld = XMMatrixTranslation(+5.0f, 1.5f, -10.0f + i * 5.0f);
-	
-		XMMATRIX leftSphereWorld = XMMatrixTranslation(-5.0f, 3.5f, -10.0f + i * 5.0f);
-		XMMATRIX rightSphereWorld = XMMatrixTranslation(+5.0f, 3.5f, -10.0f + i * 5.0f);
-	
-		XMStoreFloat4x4(&leftCylRitem->World, leftCylWorld);
-		leftCylRitem->ObjCBIndex = objCBIndex++;
-		leftCylRitem->Geo = mGeometries["shapeGeo"].get();
-		leftCylRitem->Mat = mMaterials["stone"].get();
-		leftCylRitem->PrimitiveType = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
-		leftCylRitem->IndexCount = leftCylRitem->Geo->DrawArgs["cylinder"].IndexCount;
-		leftCylRitem->StartIndexLocation = leftCylRitem->Geo->DrawArgs["cylinder"].StartIndexLocation;
-		leftCylRitem->BaseVertexLocation = leftCylRitem->Geo->DrawArgs["cylinder"].BaseVertexLocation;
-		leftCylRitem->Name = "leftCyl" + std::to_string(i);
-		XMStoreFloat4x4(&rightCylRitem->World, rightCylWorld);
-		rightCylRitem->ObjCBIndex = objCBIndex++;
-		rightCylRitem->Geo = mGeometries["shapeGeo"].get();
-		rightCylRitem->Mat = mMaterials["stone"].get();
-		rightCylRitem->PrimitiveType = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
-		rightCylRitem->IndexCount = rightCylRitem->Geo->DrawArgs["cylinder"].IndexCount;
-		rightCylRitem->StartIndexLocation = rightCylRitem->Geo->DrawArgs["cylinder"].StartIndexLocation;
-		rightCylRitem->BaseVertexLocation = rightCylRitem->Geo->DrawArgs["cylinder"].BaseVertexLocation;
-		rightCylRitem->Name = "rightCyl" + std::to_string(i);
-
-		XMStoreFloat4x4(&leftSphereRitem->World, leftSphereWorld);
-		leftSphereRitem->ObjCBIndex = objCBIndex++;
-		leftSphereRitem->Geo = mGeometries["shapeGeo"].get();
-		leftSphereRitem->Mat = mMaterials["stone"].get();
-		leftSphereRitem->PrimitiveType = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
-		leftSphereRitem->IndexCount = leftSphereRitem->Geo->DrawArgs["sphere"].IndexCount;
-		leftSphereRitem->StartIndexLocation = leftSphereRitem->Geo->DrawArgs["sphere"].StartIndexLocation;
-		leftSphereRitem->BaseVertexLocation = leftSphereRitem->Geo->DrawArgs["sphere"].BaseVertexLocation;
-		leftSphereRitem->Name = "leftSphere" + std::to_string(i);
-
-		XMStoreFloat4x4(&rightSphereRitem->World, rightSphereWorld);
-		rightSphereRitem->ObjCBIndex = objCBIndex++;
-		rightSphereRitem->Geo = mGeometries["shapeGeo"].get();
-		rightSphereRitem->Mat = mMaterials["stone"].get();
-		rightSphereRitem->PrimitiveType = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
-		rightSphereRitem->IndexCount = rightSphereRitem->Geo->DrawArgs["sphere"].IndexCount;
-		rightSphereRitem->StartIndexLocation = rightSphereRitem->Geo->DrawArgs["sphere"].StartIndexLocation;
-		rightSphereRitem->BaseVertexLocation = rightSphereRitem->Geo->DrawArgs["sphere"].BaseVertexLocation;
-		rightSphereRitem->Name = "rightSphere" + std::to_string(i);
-
-
-		mAllRitems.push_back(std::make_unique<RenderItem>(*leftCylRitem));
-		mAllRitems.push_back(std::make_unique<RenderItem>(*rightCylRitem));
-		mAllRitems.push_back(std::make_unique<RenderItem>(*leftSphereRitem));
-		mAllRitems.push_back(std::make_unique<RenderItem>(*rightSphereRitem));
-
-		mOpaqueArr.push_back(std::move(leftCylRitem));
-		mOpaqueArr.push_back(std::move(rightCylRitem));
-		mOpaqueArr.push_back(std::move(leftSphereRitem));
-		mOpaqueArr.push_back(std::move(rightSphereRitem));
-	}
+	// for (int i = 0; i < 5; ++i)
+	// {
+	// 	auto leftCylRitem = std::make_unique<RenderItem>();
+	// 	auto rightCylRitem = std::make_unique<RenderItem>();
+	// 	auto leftSphereRitem = std::make_unique<RenderItem>();
+	// 	auto rightSphereRitem = std::make_unique<RenderItem>();
+	//
+	// 	XMMATRIX leftCylWorld = XMMatrixTranslation(-5.0f, 1.5f, -10.0f + i * 5.0f);
+	// 	XMMATRIX rightCylWorld = XMMatrixTranslation(+5.0f, 1.5f, -10.0f + i * 5.0f);
+	//
+	// 	XMMATRIX leftSphereWorld = XMMatrixTranslation(-5.0f, 3.5f, -10.0f + i * 5.0f);
+	// 	XMMATRIX rightSphereWorld = XMMatrixTranslation(+5.0f, 3.5f, -10.0f + i * 5.0f);
+	//
+	// 	XMStoreFloat4x4(&leftCylRitem->World, leftCylWorld);
+	// 	leftCylRitem->ObjCBIndex = objCBIndex++;
+	// 	leftCylRitem->Geo = mGeometries["shapeGeo"].get();
+	// 	leftCylRitem->Mat = mMaterials["stone"].get();
+	// 	leftCylRitem->PrimitiveType = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
+	// 	leftCylRitem->IndexCount = leftCylRitem->Geo->DrawArgs["cylinder"].IndexCount;
+	// 	leftCylRitem->StartIndexLocation = leftCylRitem->Geo->DrawArgs["cylinder"].StartIndexLocation;
+	// 	leftCylRitem->BaseVertexLocation = leftCylRitem->Geo->DrawArgs["cylinder"].BaseVertexLocation;
+	// 	leftCylRitem->Name = "leftCyl" + std::to_string(i);
+	// 	XMStoreFloat4x4(&rightCylRitem->World, rightCylWorld);
+	// 	rightCylRitem->ObjCBIndex = objCBIndex++;
+	// 	rightCylRitem->Geo = mGeometries["shapeGeo"].get();
+	// 	rightCylRitem->Mat = mMaterials["stone"].get();
+	// 	rightCylRitem->PrimitiveType = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
+	// 	rightCylRitem->IndexCount = rightCylRitem->Geo->DrawArgs["cylinder"].IndexCount;
+	// 	rightCylRitem->StartIndexLocation = rightCylRitem->Geo->DrawArgs["cylinder"].StartIndexLocation;
+	// 	rightCylRitem->BaseVertexLocation = rightCylRitem->Geo->DrawArgs["cylinder"].BaseVertexLocation;
+	// 	rightCylRitem->Name = "rightCyl" + std::to_string(i);
+	//
+	// 	XMStoreFloat4x4(&leftSphereRitem->World, leftSphereWorld);
+	// 	leftSphereRitem->ObjCBIndex = objCBIndex++;
+	// 	leftSphereRitem->Geo = mGeometries["shapeGeo"].get();
+	// 	leftSphereRitem->Mat = mMaterials["stone"].get();
+	// 	leftSphereRitem->PrimitiveType = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
+	// 	leftSphereRitem->IndexCount = leftSphereRitem->Geo->DrawArgs["sphere"].IndexCount;
+	// 	leftSphereRitem->StartIndexLocation = leftSphereRitem->Geo->DrawArgs["sphere"].StartIndexLocation;
+	// 	leftSphereRitem->BaseVertexLocation = leftSphereRitem->Geo->DrawArgs["sphere"].BaseVertexLocation;
+	// 	leftSphereRitem->Name = "leftSphere" + std::to_string(i);
+	//
+	// 	XMStoreFloat4x4(&rightSphereRitem->World, rightSphereWorld);
+	// 	rightSphereRitem->ObjCBIndex = objCBIndex++;
+	// 	rightSphereRitem->Geo = mGeometries["shapeGeo"].get();
+	// 	rightSphereRitem->Mat = mMaterials["stone"].get();
+	// 	rightSphereRitem->PrimitiveType = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
+	// 	rightSphereRitem->IndexCount = rightSphereRitem->Geo->DrawArgs["sphere"].IndexCount;
+	// 	rightSphereRitem->StartIndexLocation = rightSphereRitem->Geo->DrawArgs["sphere"].StartIndexLocation;
+	// 	rightSphereRitem->BaseVertexLocation = rightSphereRitem->Geo->DrawArgs["sphere"].BaseVertexLocation;
+	// 	rightSphereRitem->Name = "rightSphere" + std::to_string(i);
+	//
+	//
+	// 	mAllRitems.push_back(std::make_unique<RenderItem>(*leftCylRitem));
+	// 	mAllRitems.push_back(std::make_unique<RenderItem>(*rightCylRitem));
+	// 	mAllRitems.push_back(std::make_unique<RenderItem>(*leftSphereRitem));
+	// 	mAllRitems.push_back(std::make_unique<RenderItem>(*rightSphereRitem));
+	//
+	// 	mOpaqueArr.push_back(std::move(leftCylRitem));
+	// 	mOpaqueArr.push_back(std::move(rightCylRitem));
+	// 	mOpaqueArr.push_back(std::move(leftSphereRitem));
+	// 	mOpaqueArr.push_back(std::move(rightSphereRitem));
+	// }
 
 	auto floorRitem = std::make_unique<RenderItem>();
 	floorRitem->World = MathHelper::Identity4x4();
@@ -1362,6 +1362,7 @@ void BoxApp::BuildRenderItems()
 	mirrorRitem->BaseVertexLocation = mirrorRitem->Geo->DrawArgs["mirror"].BaseVertexLocation;
 	mirrorRitem->Name = "mirror";
 	mAllRitems.push_back(std::make_unique<RenderItem>(*mirrorRitem));
+	mTransparentArr.push_back(std::make_unique<RenderItem>(*mirrorRitem));
 	mStencilMirrorsArr.push_back(std::move(mirrorRitem));
 
 	auto skullRitem = std::make_unique<RenderItem>();
@@ -1376,13 +1377,14 @@ void BoxApp::BuildRenderItems()
 	skullRitem->StartIndexLocation = skullRitem->Geo->DrawArgs["skull"].StartIndexLocation;
 	skullRitem->BaseVertexLocation = skullRitem->Geo->DrawArgs["skull"].BaseVertexLocation;
 	skullRitem->Name = "skull";
-	
 
 	auto reflectedSkullRitem = std::make_unique<RenderItem>();
 	*reflectedSkullRitem = *skullRitem;
+	XMStoreFloat4x4(&reflectedSkullRitem->World, XMMatrixScaling(0.5f, 0.5f, 0.5f) * XMMatrixRotationRollPitchYaw(0.0, DirectX::XMConvertToRadians(90), 0.0) * XMMatrixTranslation(0.0f, 1.5f, 3.0f));
 	reflectedSkullRitem->ObjCBIndex = objCBIndex++;
 	mAllRitems.push_back(std::make_unique<RenderItem>(*reflectedSkullRitem));
 	mRelectedArr.push_back(std::move(reflectedSkullRitem));
+
 
 	mAllRitems.push_back(std::make_unique<RenderItem>(*skullRitem));
 	mOpaqueArr.push_back(std::move(skullRitem));
@@ -1432,7 +1434,6 @@ void BoxApp::BuildWavesGeometryBuffers() {
 	auto geo = std::make_unique<MeshGeometry>();
 	geo->Name = "waterGeo";
 
-	// ��̬����
 	geo->VertexBufferCPU = nullptr;
 	geo->VertexBufferGPU = nullptr;
 

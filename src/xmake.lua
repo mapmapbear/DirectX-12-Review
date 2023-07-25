@@ -14,7 +14,7 @@ add_files("**.cpp")
 add_includedirs("../thirdparty/imgui/IMGUI/")
 add_includedirs("./")
 add_syslinks("User32", "kernel32", "Gdi32", "Shell32", "DXGI", "D3D12", "D3DCompiler")
-add_links("Imgui.lib")
+add_links("Imgui")
 add_linkdirs("../thirdparty/imgui/x64/Debug")
 after_build(function(target)
     src_path = "shader/"
