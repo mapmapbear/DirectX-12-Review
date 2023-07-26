@@ -1,14 +1,13 @@
 ﻿#pragma once
-
 #if defined(DEBUG) || defined(_DEBUG)
 #define _CRTDBG_MAP_ALLOC
 #include <crtdbg.h>
 #endif
-#define __IMGUI 1
 #include "d3dUtil.h"
 #include "GameTimer.h"
+#undef __IMGUI 
 
-#ifdef __IMGUI
+#ifndef __IMGUI
 // include ImGui
 #include <imgui.h>
 #include <imgui_impl_dx12.h>
@@ -19,7 +18,7 @@
 // #pragma comment(lib, "D3D12.lib")
 // #pragma comment(lib, "dxgi.lib") 
 
-#ifdef __IMGUI
+#ifndef __IMGUI
 class ImguiManager {
 public:
 	ImguiManager();
@@ -90,7 +89,7 @@ protected:
 protected:
 
 	static D3DApp* mApp;
-#ifdef __IMGUI
+#ifndef __IMGUI
 	ImguiManager imguiManager;
 #endif
 

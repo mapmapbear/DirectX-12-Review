@@ -1,8 +1,11 @@
 set_config("toolchain", "clang-cl")
 add_rules("mode.release", "mode.debug")
+local opt = {};
+opt.debug = true;
+opt.configs = {dx12 = true, win32 = true};
+add_requires("imgui docking", opt)
 -- 设置子系统为窗口而不是控制台
 add_ldflags("-subsystem:windows") 
-
 option("is_clang")
 add_csnippets("is_clang", "return (__clang__)?0:-1;", {
 	tryrun = true
@@ -35,22 +38,23 @@ function BuildProject(config)
 		return
 	end
 	target(projectName)
+	add_packages("imgui")
 	set_languages("clatest", "cxx20")
 	local projectType = GetValue(config.projectType)
 	if projectType ~= nil then
 		set_kind(projectType)
 	end
-	if UseUnityBuild then
-		local unityBuildBatch = GetValue(config.unityBuildBatch)
-		if (unityBuildBatch ~= nil) and (unityBuildBatch > 1) then
-			add_rules("c.unity_build", {
-				batchsize = unityBuildBatch
-			})
-			add_rules("c++.unity_build", {
-				batchsize = unityBuildBatch
-			})
-		end
-	end
+	-- if UseUnityBuild then
+	-- 	local unityBuildBatch = GetValue(config.unityBuildBatch)
+	-- 	if (unityBuildBatch ~= nil) and (unityBuildBatch > 1) then
+	-- 		add_rules("c.unity_build", {
+	-- 			batchsize = unityBuildBatch
+	-- 		})
+	-- 		add_rules("c++.unity_build", {
+	-- 			batchsize = unityBuildBatch
+	-- 		})
+	-- 	end
+	-- end
 	local value = GetValue(config.exception)
 	if (value ~= nil) and value then
 		if has_config("is_msvc") then

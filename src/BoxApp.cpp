@@ -96,7 +96,7 @@ void BoxApp::Update(const GameTimer& gt)
 		WaitForSingleObject(eventHandle, INFINITE);
 		CloseHandle(eventHandle);
 	}
-#ifdef __IMGUI
+#ifndef __IMGUI
 	UpdateImGui(gt, mMainPassCB);
 #endif
 	AnimateMaterial(gt);
@@ -107,7 +107,7 @@ void BoxApp::Update(const GameTimer& gt)
 	UpdateWaves(gt);
 }
 
-#ifdef __IMGUI
+#ifndef __IMGUI
 void BoxApp::UpdateImGui(const GameTimer &gt, PassConstants& buffer) {
 	static bool animateCube = true, customColor = false;
 	ImGui_ImplDX12_NewFrame();
@@ -325,7 +325,7 @@ void BoxApp::Draw(const GameTimer& gt)
 			ThrowIfFailed(mCommandList->Reset(cmdListAlloc.Get(), mPSOs["opaque"].Get()));
 			break;
 	}
-#ifdef __IMGUI
+#ifndef __IMGUI
 	ImGui::Render();
 #endif
 
@@ -371,7 +371,7 @@ void BoxApp::Draw(const GameTimer& gt)
 	DrawRenderItems(mCommandList.Get(), mTransparentRitems);
 
 	mCommandList->SetDescriptorHeaps(1, mImGUIHeap.GetAddressOf());
-#ifdef __IMGUI
+#ifndef __IMGUI
 	ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), mCommandList.Get());
 #endif
 	mCommandList->ResourceBarrier(1, get_rvalue_ptr(CD3DX12_RESOURCE_BARRIER::Transition(CurrentBackBuffer(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT)));
