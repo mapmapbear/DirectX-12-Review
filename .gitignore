@@ -399,3 +399,4 @@ FodyWeavers.xsd
 *.sln.iml
 bin/
 build/
+vsxmake2022/

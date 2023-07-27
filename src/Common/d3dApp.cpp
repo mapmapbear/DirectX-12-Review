@@ -389,6 +389,20 @@ LRESULT D3DApp::MsgProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 	return DefWindowProc(hwnd, msg, wParam, lParam);
 }
 
+BOOL CALLBACK MonitorEnumProc(HMONITOR hMonitor, HDC hdcMonitor, LPRECT lprcMonitor, LPARAM dwData) {
+	// 通过条件判断找到屏幕 B
+	MONITORINFOEX monitorInfo;
+	monitorInfo.cbSize = sizeof(MONITORINFOEX);
+	GetMonitorInfo(hMonitor, &monitorInfo);
+
+	if (monitorInfo.dwFlags & MONITORINFOF_PRIMARY)
+		return TRUE; // 跳过主屏幕
+
+	HMONITOR *pHMonitorB = reinterpret_cast<HMONITOR *>(dwData);
+	*pHMonitorB = hMonitor;
+	return FALSE; // 停止枚举
+}
+
 bool D3DApp::InitMainWindow()
 {
 	// 填写WNDCLASS结构体,根据其中描述的特征来创建一个窗口
@@ -417,16 +431,27 @@ bool D3DApp::InitMainWindow()
 	int width = R.right - R.left;
 	int height = R.bottom - R.top;
 
+	HMONITOR hMonitorB = NULL;
+	EnumDisplayMonitors(NULL, NULL, MonitorEnumProc, (LPARAM)&hMonitorB);
+
+	MONITORINFOEX monitorInfoB;
+	monitorInfoB.cbSize = sizeof(MONITORINFOEX);
+	GetMonitorInfo(hMonitorB, &monitorInfoB);
+
 	// 调用CreateWindow()创建窗口,返回创建窗口的句柄(HWND类型),创建失败返回0
 	// 窗口句柄是一种窗口的引用方式
 	mhMainWnd = CreateWindow(
 		L"MainWnd", // 采用前面注册的WNDCLASS实例
 		mMainWndCaption.c_str(), // 窗口标题
-		WS_OVERLAPPEDWINDOW, // 窗口的样式标志
-		CW_USEDEFAULT, // x坐标
-		CW_USEDEFAULT, // y坐标
-		width, // 窗口宽度
-		height, // 窗口高度
+		// WS_OVERLAPPEDWINDOW, // 窗口的样式标志
+		// CW_USEDEFAULT, // x坐标
+		// CW_USEDEFAULT, // y坐标
+		// width, // 窗口宽度
+		// height, // 窗口高度
+		WS_OVERLAPPEDWINDOW | WS_VISIBLE,
+		monitorInfoB.rcWork.left * 6 / 5, monitorInfoB.rcWork.top * 6 / 5,
+		width,
+		height,
 		0, // 父窗口句柄
 		0, // 菜单句柄
 		mhAppInst, // 应用程序实例句柄

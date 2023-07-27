@@ -35,6 +35,16 @@ struct RenderItem
 	int BaseVertexLocation = 0;
 };
 
+enum class RenderLayer : int {
+	Opaque = 0,
+	Mirrors,
+	Reflected,
+	Transparent,
+	AlphaTest,
+	Shadow,
+	Count
+};
+
 class BoxApp : public D3DApp
 {
 public:
@@ -109,22 +119,30 @@ private:
 	FrameResource* mCurrFrameResources = nullptr;
 	int mCurrFrameResourceIndex = 0;
 	std::vector<std::unique_ptr<RenderItem>> mAllRitems;
-	std::vector<std::unique_ptr<RenderItem>> mOpaqueArr;
-	std::vector<std::unique_ptr<RenderItem>> mTransparentArr;
-	std::vector<std::unique_ptr<RenderItem>> mAlphaTestArr;
-	std::vector<std::unique_ptr<RenderItem>> mStencilMirrorsArr;
-	std::vector<std::unique_ptr<RenderItem>> mRelectedArr;
+	// std::vector<std::unique_ptr<RenderItem>> mOpaqueArr;
+	// std::vector<std::unique_ptr<RenderItem>> mTransparentArr;
+	// std::vector<std::unique_ptr<RenderItem>> mAlphaTestArr;
+	// std::vector<std::unique_ptr<RenderItem>> mStencilMirrorsArr;
+	// std::vector<std::unique_ptr<RenderItem>> mRelectedArr;
 
-	std::vector<RenderItem*> mOpaqueRitems;
-	std::vector<RenderItem*> mTransparentRitems;
-	std::vector<RenderItem *> mAlphaTestRitems;
-	std::vector<RenderItem *> mStencilMirrorsRitems;
-	std::vector<RenderItem *> mRelectedRitems;
+	std::vector<RenderItem *> mRitemLayer[(int)RenderLayer::Count];
+
+	// std::vector<RenderItem *> mOpaqueRitems;
+	// std::vector<RenderItem *> mTransparentRitems;
+	// std::vector<RenderItem *> mAlphaTestRitems;
+	// std::vector<RenderItem *> mStencilMirrorsRitems;
+	// std::vector<RenderItem *> mRelectedRitems;
+
+	RenderItem* mSkullRitem = nullptr;
+	RenderItem* mReflectedSkullRitem = nullptr;
+	RenderItem* mShadowedSkullRitem = nullptr;
 
 	PassConstants mMainPassCB;
 	PassConstants mReflectedPassCB;
 
 	XMFLOAT3 mEyePos = { 0.0f, 0.0f, 0.0f };
+
+	XMFLOAT3 mSkullTranslation = { 0.0f, 1.0f, -5.0f };
 
 	std::unordered_map<std::string, std::unique_ptr<MeshGeometry>> mGeometries;
 	std::unordered_map<std::string, std::unique_ptr<Material>> mMaterials;
