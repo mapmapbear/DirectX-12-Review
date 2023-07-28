@@ -333,16 +333,31 @@ void BoxApp::OnKeyboardInput(const GameTimer &gt) {
 	XMMATRIX R = XMMatrixReflect(mirrorPlane);
 	XMStoreFloat4x4(&mReflectedSkullRitem->World, skullWorld * R);
 
+	XMVECTOR mirrorPlane1 = XMVectorSet(0.0f, 0.0f, 1.0f, 0.0f); // xy plane
+	XMMATRIX R1 = XMMatrixReflect(mirrorPlane1);
+	XMMATRIX floorWorld = XMLoadFloat4x4(&mFloorRitem->World);
+	XMStoreFloat4x4(&mReflectedFloorRitem->World, floorWorld * R1);
+	
 	// Update shadow world matrix.
-	// XMVECTOR shadowPlane = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f); // xz plane
-	// XMVECTOR toMainLight = -XMLoadFloat3(&mMainPassCB.Lights[0].Direction);
-	// XMMATRIX S = XMMatrixShadow(shadowPlane, toMainLight);
-	// XMMATRIX shadowOffsetY = XMMatrixTranslation(0.0f, 0.001f, 0.0f);
-	// XMStoreFloat4x4(&mShadowedSkullRitem->World, skullWorld * S * shadowOffsetY);
+	XMVECTOR shadowPlane = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f); // xz plane
+	XMVECTOR toMainLight = XMVectorNegate(XMLoadFloat3(&mMainPassCB.Lights[0].Direction));
+	XMMATRIX S = XMMatrixShadow(shadowPlane, toMainLight);
+	XMMATRIX shadowOffsetY = XMMatrixTranslation(0.0f, 0.001f, 0.0f);
+	XMStoreFloat4x4(&mShadowedSkullRitem->World, skullWorld * S * shadowOffsetY);
+
+	XMVECTOR mirrorPlane2 = XMVectorSet(0.0f, 0.0f, 1.0f, 0.0f); // xy plane
+	XMMATRIX R2 = XMMatrixReflect(mirrorPlane2);
+	XMMATRIX R3 = XMMatrixRotationY(-0.5f * MathHelper::Pi);
+	XMMATRIX reflectedShadow = XMLoadFloat4x4(&mShadowedSkullRitem->World);
+	// XMStoreFloat4x4(&mReflectedShadowedSkullRitem->World, reflectedShadow * R2);
+	XMStoreFloat4x4(&mReflectedShadowedSkullRitem->World, reflectedShadow * R3 * R2);
 
 	mSkullRitem->NumFramesDirty = gNumFrameResources;
+	mFloorRitem->NumFramesDirty = gNumFrameResources;
+	mReflectedFloorRitem->NumFramesDirty = gNumFrameResources;
 	mReflectedSkullRitem->NumFramesDirty = gNumFrameResources;
-	// mShadowedSkullRitem->NumFramesDirty = gNumFrameResources;
+	mReflectedShadowedSkullRitem->NumFramesDirty = gNumFrameResources;
+	mShadowedSkullRitem->NumFramesDirty = gNumFrameResources;
 }
 
 void BoxApp::Draw(const GameTimer& gt)
@@ -406,9 +421,16 @@ void BoxApp::Draw(const GameTimer& gt)
 	mCommandList->SetGraphicsRootConstantBufferView(2, passCB->GetGPUVirtualAddress() + 1 * passCBByteSize);
 	mCommandList->SetPipelineState(mPSOs["drawStencilReflections"].Get());
 	DrawRenderItems(mCommandList.Get(), mRitemLayer[(int)RenderLayer::Reflected]);
-	
+
+	mCommandList->SetGraphicsRootConstantBufferView(2, passCB->GetGPUVirtualAddress());
+	mCommandList->OMSetStencilRef(0);
+	mCommandList->SetPipelineState(mPSOs["shadow"].Get());
+	DrawRenderItems(mCommandList.Get(), mRitemLayer[(int)RenderLayer::Shadow]);
+
 	mCommandList->SetPipelineState(mPSOs["transparent"].Get());
 	DrawRenderItems(mCommandList.Get(), mRitemLayer[(int)RenderLayer::Transparent]);
+
+	
 
 	mCommandList->SetDescriptorHeaps(1, mImGUIHeap.GetAddressOf());
 #ifndef __IMGUI
@@ -941,6 +963,29 @@ void BoxApp::BuildPSO()
 	drawReflectionsPsoDesc.RasterizerState.CullMode = D3D12_CULL_MODE_BACK;
 	drawReflectionsPsoDesc.RasterizerState.FrontCounterClockwise = true;
 	ThrowIfFailed(md3dDevice->CreateGraphicsPipelineState(&drawReflectionsPsoDesc, IID_PPV_ARGS(&mPSOs["drawStencilReflections"])));
+
+	D3D12_DEPTH_STENCIL_DESC shadowDSS;
+	shadowDSS.DepthEnable = true;
+	shadowDSS.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ALL;
+	shadowDSS.DepthFunc = D3D12_COMPARISON_FUNC_LESS;
+	shadowDSS.StencilEnable = true;
+	shadowDSS.StencilReadMask = 0xff;
+	shadowDSS.StencilWriteMask = 0xff;
+
+	shadowDSS.FrontFace.StencilFailOp = D3D12_STENCIL_OP_KEEP;
+	shadowDSS.FrontFace.StencilDepthFailOp = D3D12_STENCIL_OP_KEEP;
+	shadowDSS.FrontFace.StencilPassOp = D3D12_STENCIL_OP_INCR;
+	shadowDSS.FrontFace.StencilFunc = D3D12_COMPARISON_FUNC_EQUAL;
+
+	// We are not rendering backfacing polygons, so these settings do not matter.
+	shadowDSS.BackFace.StencilFailOp = D3D12_STENCIL_OP_KEEP;
+	shadowDSS.BackFace.StencilDepthFailOp = D3D12_STENCIL_OP_KEEP;
+	shadowDSS.BackFace.StencilPassOp = D3D12_STENCIL_OP_INCR;
+	shadowDSS.BackFace.StencilFunc = D3D12_COMPARISON_FUNC_EQUAL;
+
+	D3D12_GRAPHICS_PIPELINE_STATE_DESC shadowPsoDesc = transparentPsoDesc;
+	shadowPsoDesc.DepthStencilState = shadowDSS;
+	ThrowIfFailed(md3dDevice->CreateGraphicsPipelineState(&shadowPsoDesc, IID_PPV_ARGS(&mPSOs["shadow"])));
 }
 
 void BoxApp::BuildFrameResources()
@@ -1380,7 +1425,16 @@ void BoxApp::BuildRenderItems()
 	floorRitem->StartIndexLocation = floorRitem->Geo->DrawArgs["floor"].StartIndexLocation;
 	floorRitem->BaseVertexLocation = floorRitem->Geo->DrawArgs["floor"].BaseVertexLocation;
 	floorRitem->Name = "floor";
+	mFloorRitem = floorRitem.get();
 	mRitemLayer[(int)RenderLayer::Opaque].push_back(floorRitem.get());
+
+	auto reflectFloorRitem = std::make_unique<RenderItem>();
+	*reflectFloorRitem = *floorRitem;
+	reflectFloorRitem->ObjCBIndex = objCBIndex++;
+	reflectFloorRitem->Name = "reflectFloor";
+	mReflectedFloorRitem = reflectFloorRitem.get();
+	mRitemLayer[(int)RenderLayer::Reflected].push_back(reflectFloorRitem.get());
+	mAllRitems.push_back(std::move(reflectFloorRitem));
 	mAllRitems.push_back(std::move(floorRitem));
 	
 	auto wallsRitem = std::make_unique<RenderItem>();
@@ -1426,7 +1480,19 @@ void BoxApp::BuildRenderItems()
 	mSkullRitem = skullRitem.get();
 	mRitemLayer[(int)RenderLayer::Opaque].push_back(skullRitem.get());
 
+	auto shadowedSkullRitem = std::make_unique<RenderItem>();
+	*shadowedSkullRitem = *skullRitem;
+	shadowedSkullRitem->ObjCBIndex = objCBIndex++;
+	shadowedSkullRitem->Mat = mMaterials["shadowMat"].get();
+	mShadowedSkullRitem = shadowedSkullRitem.get();
+	mRitemLayer[(int)RenderLayer::Shadow].push_back(shadowedSkullRitem.get());
 
+	auto reflectedShadowedSkullRitem = std::make_unique<RenderItem>();
+	*reflectedShadowedSkullRitem = *skullRitem;
+	reflectedShadowedSkullRitem->ObjCBIndex = objCBIndex++;
+	reflectedShadowedSkullRitem->Mat = mMaterials["shadowMat"].get();
+	mReflectedShadowedSkullRitem = reflectedShadowedSkullRitem.get();
+	mRitemLayer[(int)RenderLayer::Reflected].push_back(reflectedShadowedSkullRitem.get());
 
 	auto reflectedSkullRitem = std::make_unique<RenderItem>();
 	*reflectedSkullRitem = *skullRitem;
@@ -1435,6 +1501,8 @@ void BoxApp::BuildRenderItems()
 	mRitemLayer[(int)RenderLayer::Reflected].push_back(reflectedSkullRitem.get());
 	mReflectedSkullRitem = reflectedSkullRitem.get();
 	mAllRitems.push_back(std::move(reflectedSkullRitem));
+	mAllRitems.push_back(std::move(reflectedShadowedSkullRitem));
+	mAllRitems.push_back(std::move(shadowedSkullRitem));
 	mAllRitems.push_back(std::move(skullRitem));
 }
 
@@ -1552,6 +1620,14 @@ void BoxApp::BuildMaterials() {
 	checkertile->Roughness = 0.3f;
 	checkertile->DiffuseSrvHeapIndex = 3;
 
+	auto shadowMat = std::make_unique<Material>();
+	shadowMat->Name = "shadowMat";
+	shadowMat->MatCBIndex = 7;
+	shadowMat->DiffuseAlbedo = XMFLOAT4(0.0f, 0.0f, 0.0f, 0.5f);
+	shadowMat->FresnelR0 = XMFLOAT3(0.001f, 0.001f, 0.001f);
+	shadowMat->Roughness = 0.0f;
+	shadowMat->DiffuseSrvHeapIndex = 5;
+
 	// 将材质数据存放在系统内存之中,为了GPU能够在着色器中访问,还需复制到常量缓冲区中
 	mMaterials["grass"] = std::move(grass);
 	mMaterials["water"] = std::move(water);
@@ -1560,6 +1636,7 @@ void BoxApp::BuildMaterials() {
 	mMaterials["skullMat"] = std::move(skullMat);
 	mMaterials["bricks"] = std::move(bricks);
 	mMaterials["checkertile"] = std::move(checkertile);
+	mMaterials["shadowMat"] = std::move(shadowMat);
 }
 
 void BoxApp::LoadTextures() {

@@ -134,8 +134,11 @@ private:
 	// std::vector<RenderItem *> mRelectedRitems;
 
 	RenderItem* mSkullRitem = nullptr;
+	RenderItem* mFloorRitem = nullptr;
 	RenderItem* mReflectedSkullRitem = nullptr;
-	RenderItem* mShadowedSkullRitem = nullptr;
+	RenderItem *mReflectedFloorRitem = nullptr;
+	RenderItem *mReflectedShadowedSkullRitem = nullptr;
+	RenderItem *mShadowedSkullRitem = nullptr;
 
 	PassConstants mMainPassCB;
 	PassConstants mReflectedPassCB;
