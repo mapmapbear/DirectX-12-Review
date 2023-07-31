@@ -5,7 +5,7 @@
 #endif
 #include "d3dUtil.h"
 #include "GameTimer.h"
-#undef __IMGUI 
+#define __IMGUI 
 
 #ifndef __IMGUI
 // include ImGui

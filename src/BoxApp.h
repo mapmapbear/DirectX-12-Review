@@ -42,6 +42,7 @@ enum class RenderLayer : int {
 	Transparent,
 	AlphaTest,
 	Shadow,
+	AlphaTestedTreeSprites,
 	Count
 };
 
@@ -85,6 +86,7 @@ private:
 	void BuildShapeGeometry1();
 	void BuildRoomGeometry();
 	void BuildSkullGeometry();
+	void BuildTreeSpritesGeometry();
 	void BuildRenderItems();
 	float GetHillsHeight(float x, float z) const;
 	void BuildWavesGeometryBuffers();
@@ -108,6 +110,7 @@ private:
 	ComPtr<ID3DBlob> mpsByteCode = nullptr; // 编译好的像素着色器字节码
 
 	std::vector<D3D12_INPUT_ELEMENT_DESC> mInputLayout; // 输入布局描述,将顶点结构体映射到VS的输入参数中
+	std::vector<D3D12_INPUT_ELEMENT_DESC> mTreeSpriteInputLayout;
 
 	ComPtr<ID3D12PipelineState> mPSO = nullptr; // 流水线状态对象,整合了 mRootSignature, mInputLayout, mvsByteCode, mpsByteCode
 
