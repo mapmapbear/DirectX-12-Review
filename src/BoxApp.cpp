@@ -39,7 +39,10 @@ bool BoxApp::Initialize() {
 	if (!D3DApp::Initialize())
 		return false;
 	mCbvSrvDescriptorSize = md3dDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+
 	needBlur = true;
+	blurCount = 2;
+
 	mWaves = std::make_unique<Waves>(128, 128, 1.0f, 0.03f, 4.0f, 0.2f);
 	mBlurFilter = std::make_unique<BlurFilter>(md3dDevice.Get(),
 			mClientWidth, mClientHeight, DXGI_FORMAT_R8G8B8A8_UNORM);
@@ -132,9 +135,8 @@ void BoxApp::UpdateImGui(const GameTimer &gt, PassConstants &buffer) {
 		ImGui::Checkbox("ScreenBlur", &this->needBlur);
 		ImGui::Checkbox("Geometry", &this->needBlur);
 		// ImGui::SameLine(0.0f, 25.0f);
-		// ImGui::SliderFloat("Scale", &scale, 0.2f, 2.0f);
-		// ImGui::Text("Phi: %.2f degrees", XMConvertToDegrees(phi));
-		// ImGui::SliderFloat("##1", &phi, -XM_PI, XM_PI, "");
+		ImGui::Text("BlurCount: %d", this->blurCount);
+		ImGui::SliderInt("##1", &this->blurCount, 1, 8, "%d");
 		// ImGui::Text("Theta: %.2f degrees", XMConvertToDegrees(theta));
 		// ImGui::SliderFloat("##2", &theta, -XM_PI, XM_PI, "");
 		// ImGui::Text("Position: (%.1f, %.1f, 0.0)", tx, ty);
@@ -428,7 +430,7 @@ void BoxApp::Draw(const GameTimer &gt) {
 
 	if (this->needBlur) {
 		mBlurFilter->Execute(mCommandList.Get(), mPostProcessRootSignature.Get(),
-				mPSOs["horzBlur"].Get(), mPSOs["vertBlur"].Get(), CurrentBackBuffer(), 4);
+				mPSOs["horzBlur"].Get(), mPSOs["vertBlur"].Get(), CurrentBackBuffer(), this->blurCount);
 		mCommandList->ResourceBarrier(1, get_rvalue_ptr(CD3DX12_RESOURCE_BARRIER::Transition(CurrentBackBuffer(), D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_COPY_DEST)));
 		mCommandList->SetDescriptorHeaps(1, mImGUIHeap.GetAddressOf());
 		mCommandList->CopyResource(CurrentBackBuffer(), mBlurFilter->Output());

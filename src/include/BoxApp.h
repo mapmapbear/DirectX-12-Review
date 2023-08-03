@@ -175,7 +175,9 @@ private:
 	bool mIsWireframe;
 	bool misTransparent;
 
+	// blur argv
 	bool needBlur = true;
+	int blurCount;
 
 	UINT posState;
 	UINT gColorState;
