@@ -12,9 +12,6 @@ xmake version 2.7.8+HEAD.87dff1ef4
     <Filter Include="Properties">
       <UniqueIdentifier>{CC7C6180-942D-056E-3227-E6A2B3FB19CD}</UniqueIdentifier>
     </Filter>
-    <Filter Include="Common">
-      <UniqueIdentifier>{2166318B-3F39-4E98-A8D6-D21B954D2D52}</UniqueIdentifier>
-    </Filter>
 
   </ItemGroup>
   <ItemGroup>
@@ -40,34 +37,40 @@ xmake version 2.7.8+HEAD.87dff1ef4
   </ItemGroup>
   <ItemGroup>
 
+    <ClCompile Include="$(XmakeProjectDir)\src\BlurFilter.cpp">
+      <Filter><!-- nil --></Filter>
+    </ClCompile>
     <ClCompile Include="$(XmakeProjectDir)\src\BoxApp.cpp">
       <Filter><!-- nil --></Filter>
     </ClCompile>
-    <ClCompile Include="$(XmakeProjectDir)\src\Common\Camera.cpp">
-      <Filter>Common</Filter>
+    <ClCompile Include="$(XmakeProjectDir)\src\Camera.cpp">
+      <Filter><!-- nil --></Filter>
     </ClCompile>
-    <ClCompile Include="$(XmakeProjectDir)\src\Common\DDSTextureLoader.cpp">
-      <Filter>Common</Filter>
-    </ClCompile>
-    <ClCompile Include="$(XmakeProjectDir)\src\Common\GameTimer.cpp">
-      <Filter>Common</Filter>
-    </ClCompile>
-    <ClCompile Include="$(XmakeProjectDir)\src\Common\GeometryGenerator.cpp">
-      <Filter>Common</Filter>
-    </ClCompile>
-    <ClCompile Include="$(XmakeProjectDir)\src\Common\MathHelper.cpp">
-      <Filter>Common</Filter>
-    </ClCompile>
-    <ClCompile Include="$(XmakeProjectDir)\src\Common\d3dApp.cpp">
-      <Filter>Common</Filter>
-    </ClCompile>
-    <ClCompile Include="$(XmakeProjectDir)\src\Common\d3dUtil.cpp">
-      <Filter>Common</Filter>
+    <ClCompile Include="$(XmakeProjectDir)\src\DDSTextureLoader.cpp">
+      <Filter><!-- nil --></Filter>
     </ClCompile>
     <ClCompile Include="$(XmakeProjectDir)\src\FreamResource.cpp">
       <Filter><!-- nil --></Filter>
     </ClCompile>
+    <ClCompile Include="$(XmakeProjectDir)\src\GameTimer.cpp">
+      <Filter><!-- nil --></Filter>
+    </ClCompile>
+    <ClCompile Include="$(XmakeProjectDir)\src\GeometryGenerator.cpp">
+      <Filter><!-- nil --></Filter>
+    </ClCompile>
+    <ClCompile Include="$(XmakeProjectDir)\src\GpuWaves.cpp">
+      <Filter><!-- nil --></Filter>
+    </ClCompile>
+    <ClCompile Include="$(XmakeProjectDir)\src\MathHelper.cpp">
+      <Filter><!-- nil --></Filter>
+    </ClCompile>
     <ClCompile Include="$(XmakeProjectDir)\src\Waves.cpp">
+      <Filter><!-- nil --></Filter>
+    </ClCompile>
+    <ClCompile Include="$(XmakeProjectDir)\src\d3dApp.cpp">
+      <Filter><!-- nil --></Filter>
+    </ClCompile>
+    <ClCompile Include="$(XmakeProjectDir)\src\d3dUtil.cpp">
       <Filter><!-- nil --></Filter>
     </ClCompile>
     <ClCompile Include="$(XmakeProjectDir)\src\main.cpp">

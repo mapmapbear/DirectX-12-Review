@@ -53,7 +53,7 @@ xmake version 2.7.8+HEAD.87dff1ef4
     <XmakeRunEnvs>PATH=C:\Users\YingJunHao\AppData\Local\.xmake\packages\i\imgui\docking\5304ae0ef98f4b53a1e93b0a2200cda4\lib;C:\Users\YingJunHao\AppData\Local\.xmake\packages\i\imgui\docking\5304ae0ef98f4b53a1e93b0a2200cda4\bin;$([System.Environment]::GetEnvironmentVariable('PATH'))</XmakeRunEnvs>
     <XmakeRunArgs><!-- nil --></XmakeRunArgs>
     <XmakeConfigFlags></XmakeConfigFlags>
-    <XmakeIncludeDirs>$(XmakeProjectDir)\src;C:\Users\YingJunHao\AppData\Local\.xmake\packages\i\imgui\docking\5304ae0ef98f4b53a1e93b0a2200cda4\include;C:\Users\YingJunHao\AppData\Local\.xmake\packages\i\imgui\docking\5304ae0ef98f4b53a1e93b0a2200cda4\include\imgui;C:\Users\YingJunHao\AppData\Local\.xmake\packages\i\imgui\docking\5304ae0ef98f4b53a1e93b0a2200cda4\include\backends;C:\Users\YingJunHao\AppData\Local\.xmake\packages\i\imgui\docking\5304ae0ef98f4b53a1e93b0a2200cda4\include\misc\cpp</XmakeIncludeDirs>
+    <XmakeIncludeDirs>$(XmakeProjectDir)\src\include;C:\Users\YingJunHao\AppData\Local\.xmake\packages\i\imgui\docking\5304ae0ef98f4b53a1e93b0a2200cda4\include;C:\Users\YingJunHao\AppData\Local\.xmake\packages\i\imgui\docking\5304ae0ef98f4b53a1e93b0a2200cda4\include\imgui;C:\Users\YingJunHao\AppData\Local\.xmake\packages\i\imgui\docking\5304ae0ef98f4b53a1e93b0a2200cda4\include\backends;C:\Users\YingJunHao\AppData\Local\.xmake\packages\i\imgui\docking\5304ae0ef98f4b53a1e93b0a2200cda4\include\misc\cpp</XmakeIncludeDirs>
     <XmakeLinkDirs>C:\Users\YingJunHao\AppData\Local\.xmake\packages\i\imgui\docking\5304ae0ef98f4b53a1e93b0a2200cda4\lib</XmakeLinkDirs>
     <XmakeSourceDirs></XmakeSourceDirs>
     <XmakePrecompiledHeader><!-- nil --></XmakePrecompiledHeader>
@@ -75,7 +75,7 @@ xmake version 2.7.8+HEAD.87dff1ef4
     <XmakeRunEnvs>PATH=C:\Users\YingJunHao\AppData\Local\.xmake\packages\i\imgui\docking\5304ae0ef98f4b53a1e93b0a2200cda4\lib;C:\Users\YingJunHao\AppData\Local\.xmake\packages\i\imgui\docking\5304ae0ef98f4b53a1e93b0a2200cda4\bin;$([System.Environment]::GetEnvironmentVariable('PATH'))</XmakeRunEnvs>
     <XmakeRunArgs><!-- nil --></XmakeRunArgs>
     <XmakeConfigFlags></XmakeConfigFlags>
-    <XmakeIncludeDirs>$(XmakeProjectDir)\src;C:\Users\YingJunHao\AppData\Local\.xmake\packages\i\imgui\docking\5304ae0ef98f4b53a1e93b0a2200cda4\include;C:\Users\YingJunHao\AppData\Local\.xmake\packages\i\imgui\docking\5304ae0ef98f4b53a1e93b0a2200cda4\include\imgui;C:\Users\YingJunHao\AppData\Local\.xmake\packages\i\imgui\docking\5304ae0ef98f4b53a1e93b0a2200cda4\include\backends;C:\Users\YingJunHao\AppData\Local\.xmake\packages\i\imgui\docking\5304ae0ef98f4b53a1e93b0a2200cda4\include\misc\cpp</XmakeIncludeDirs>
+    <XmakeIncludeDirs>$(XmakeProjectDir)\src\include;C:\Users\YingJunHao\AppData\Local\.xmake\packages\i\imgui\docking\5304ae0ef98f4b53a1e93b0a2200cda4\include;C:\Users\YingJunHao\AppData\Local\.xmake\packages\i\imgui\docking\5304ae0ef98f4b53a1e93b0a2200cda4\include\imgui;C:\Users\YingJunHao\AppData\Local\.xmake\packages\i\imgui\docking\5304ae0ef98f4b53a1e93b0a2200cda4\include\backends;C:\Users\YingJunHao\AppData\Local\.xmake\packages\i\imgui\docking\5304ae0ef98f4b53a1e93b0a2200cda4\include\misc\cpp</XmakeIncludeDirs>
     <XmakeLinkDirs>C:\Users\YingJunHao\AppData\Local\.xmake\packages\i\imgui\docking\5304ae0ef98f4b53a1e93b0a2200cda4\lib</XmakeLinkDirs>
     <XmakeSourceDirs></XmakeSourceDirs>
     <XmakePrecompiledHeader><!-- nil --></XmakePrecompiledHeader>
@@ -103,34 +103,40 @@ xmake version 2.7.8+HEAD.87dff1ef4
   </ItemGroup>
   <ItemGroup>
 
+    <ClCompile Include="$(XmakeProjectDir)\src\BlurFilter.cpp">
+      <CompileAs>CompileAsCpp</CompileAs>
+    </ClCompile>
     <ClCompile Include="$(XmakeProjectDir)\src\BoxApp.cpp">
       <CompileAs>CompileAsCpp</CompileAs>
     </ClCompile>
-    <ClCompile Include="$(XmakeProjectDir)\src\Common\Camera.cpp">
+    <ClCompile Include="$(XmakeProjectDir)\src\Camera.cpp">
       <CompileAs>CompileAsCpp</CompileAs>
     </ClCompile>
-    <ClCompile Include="$(XmakeProjectDir)\src\Common\DDSTextureLoader.cpp">
-      <CompileAs>CompileAsCpp</CompileAs>
-    </ClCompile>
-    <ClCompile Include="$(XmakeProjectDir)\src\Common\GameTimer.cpp">
-      <CompileAs>CompileAsCpp</CompileAs>
-    </ClCompile>
-    <ClCompile Include="$(XmakeProjectDir)\src\Common\GeometryGenerator.cpp">
-      <CompileAs>CompileAsCpp</CompileAs>
-    </ClCompile>
-    <ClCompile Include="$(XmakeProjectDir)\src\Common\MathHelper.cpp">
-      <CompileAs>CompileAsCpp</CompileAs>
-    </ClCompile>
-    <ClCompile Include="$(XmakeProjectDir)\src\Common\d3dApp.cpp">
-      <CompileAs>CompileAsCpp</CompileAs>
-    </ClCompile>
-    <ClCompile Include="$(XmakeProjectDir)\src\Common\d3dUtil.cpp">
+    <ClCompile Include="$(XmakeProjectDir)\src\DDSTextureLoader.cpp">
       <CompileAs>CompileAsCpp</CompileAs>
     </ClCompile>
     <ClCompile Include="$(XmakeProjectDir)\src\FreamResource.cpp">
       <CompileAs>CompileAsCpp</CompileAs>
     </ClCompile>
+    <ClCompile Include="$(XmakeProjectDir)\src\GameTimer.cpp">
+      <CompileAs>CompileAsCpp</CompileAs>
+    </ClCompile>
+    <ClCompile Include="$(XmakeProjectDir)\src\GeometryGenerator.cpp">
+      <CompileAs>CompileAsCpp</CompileAs>
+    </ClCompile>
+    <ClCompile Include="$(XmakeProjectDir)\src\GpuWaves.cpp">
+      <CompileAs>CompileAsCpp</CompileAs>
+    </ClCompile>
+    <ClCompile Include="$(XmakeProjectDir)\src\MathHelper.cpp">
+      <CompileAs>CompileAsCpp</CompileAs>
+    </ClCompile>
     <ClCompile Include="$(XmakeProjectDir)\src\Waves.cpp">
+      <CompileAs>CompileAsCpp</CompileAs>
+    </ClCompile>
+    <ClCompile Include="$(XmakeProjectDir)\src\d3dApp.cpp">
+      <CompileAs>CompileAsCpp</CompileAs>
+    </ClCompile>
+    <ClCompile Include="$(XmakeProjectDir)\src\d3dUtil.cpp">
       <CompileAs>CompileAsCpp</CompileAs>
     </ClCompile>
     <ClCompile Include="$(XmakeProjectDir)\src\main.cpp">

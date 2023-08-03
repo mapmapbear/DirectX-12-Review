@@ -2,9 +2,9 @@
 #pragma once
 #pragma once
 
-#include "Common/d3dUtil.h"
-#include "Common/MathHelper.h"
-#include "Common/UploadBuffer.h"
+#include "d3dUtil.h"
+#include "MathHelper.h"
+#include "UploadBuffer.h"
 
 
 struct ObjectConstants

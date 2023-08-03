@@ -1,9 +1,10 @@
-#include "Common/d3dApp.h"
-#include "Common/MathHelper.h"
-#include "Common/UploadBuffer.h"
-#include "Common/GeometryGenerator.h"
-#include "FrameResource.h"
-#include "Waves.h"
+#include <d3dApp.h>
+#include <MathHelper.h>
+#include <UploadBuffer.h>
+#include <GeometryGenerator.h>
+#include <FrameResource.h>
+#include <Waves.h>
+#include <BlurFilter.h>
 
 using Microsoft::WRL::ComPtr;
 using namespace DirectX;
@@ -17,8 +18,6 @@ struct RenderItem
 	std::string Name = "";
 	XMFLOAT4X4 World = MathHelper::Identity4x4();
 	XMFLOAT4X4 TexTransform = MathHelper::Identity4x4();
-
-
 	int NumFramesDirty = gNumFrameResources;
 
 	// 该索引指向,GPU常量缓存区对应的,当前渲染项中的物体常量缓冲区
@@ -80,6 +79,8 @@ private:
 	std::array<const CD3DX12_STATIC_SAMPLER_DESC, 6> GetStaticSamplers();
 	std::array<const CD3DX12_STATIC_SAMPLER_DESC, 1> GetStaticSamplers1();
 	void BuildRootSignature(); // 根签名指定了常量缓冲区绑定到哪个着色器寄存器
+	void BuildWaveRootSignature();
+	void BuildPostProcessRootSignature();
 	void BuildShadersAndInputLayout(); // 指定 VS, PS, mInputLayout(顶点结构体映射到VS的输入参数)
 	void BuildPSO(); // 为 mPSO 赋值
 	void BuildFrameResources();
@@ -93,10 +94,13 @@ private:
 	void BuildMaterials();
 	void LoadTextures();
 	void AnimateMaterial(const GameTimer &gt);
+	void BuildResources();
 
 private:
 
 	ComPtr<ID3D12RootSignature> mRootSignature = nullptr; // 根签名,指定了着色器程序所需的资源(CBV对应哪个着色器寄存器)
+	ComPtr<ID3D12RootSignature> mWaveRootSignature = nullptr; // 海浪根签名
+	ComPtr<ID3D12RootSignature> mPostProcessRootSignature = nullptr; // 后处理根签名
 	ComPtr<ID3D12DescriptorHeap> mCbvHeap = nullptr; // 常量缓冲区描述符
 	ComPtr<ID3D12DescriptorHeap> mSrvHeap = nullptr;
 
@@ -105,6 +109,7 @@ private:
 
 
 	std::unique_ptr<MeshGeometry> mBoxGeo = nullptr;
+	std::unique_ptr<BlurFilter> mBlurFilter;
 
 	ComPtr<ID3DBlob> mvsByteCode = nullptr; // 编译好的顶点着色器字节码
 	ComPtr<ID3DBlob> mpsByteCode = nullptr; // 编译好的像素着色器字节码
@@ -170,7 +175,13 @@ private:
 	bool mIsWireframe;
 	bool misTransparent;
 
+	bool needBlur = true;
+
 	UINT posState;
 	UINT gColorState;
 	float gColor[3];
+
+	UINT mWidth = 0;
+	UINT mHeight = 0;
+	DXGI_FORMAT mFormat = DXGI_FORMAT_R8G8B8A8_UNORM;
 };
