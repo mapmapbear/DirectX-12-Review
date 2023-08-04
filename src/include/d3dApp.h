@@ -5,7 +5,8 @@
 #endif
 #include "d3dUtil.h"
 #include "GameTimer.h"
-#undef __IMGUI 
+#define __IMGUI
+// #undef  __IMGUI 
 
 #ifndef __IMGUI
 // include ImGui
@@ -73,6 +74,7 @@ protected:
 	bool InitDirect3D();
 	void CreateCommandObjects(); // 创建命令队列,命令分配器和命令列表
 	void CreateSwapChain(); //创建交换链
+	void CheckAndTransitionResourceState(ID3D12Resource *resource, D3D12_RESOURCE_STATES beforeState, D3D12_RESOURCE_STATES afterState);
 
 	void FlushCommandQueue(); // 强制CPU等待GPU,直到GPU处理完队列中的所有命令
 

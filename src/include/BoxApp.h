@@ -1,10 +1,11 @@
-#include <d3dApp.h>
-#include <MathHelper.h>
-#include <UploadBuffer.h>
-#include <GeometryGenerator.h>
-#include <FrameResource.h>
-#include <Waves.h>
-#include <BlurFilter.h>
+#include "d3dApp.h"
+#include "MathHelper.h"
+#include "UploadBuffer.h"
+#include "GeometryGenerator.h"
+#include "FrameResource.h"
+#include "Waves.h"
+#include "BlurFilter.h"
+#include "Camera.h"
 
 using Microsoft::WRL::ComPtr;
 using namespace DirectX;
@@ -120,26 +121,15 @@ private:
 	ComPtr<ID3D12PipelineState> mPSO = nullptr; // 流水线状态对象,整合了 mRootSignature, mInputLayout, mvsByteCode, mpsByteCode
 
 	XMFLOAT4X4 mWorld = MathHelper::Identity4x4();
-	XMFLOAT4X4 mView = MathHelper::Identity4x4();
-	XMFLOAT4X4 mProj = MathHelper::Identity4x4();
+	// XMFLOAT4X4 mView = MathHelper::Identity4x4();
+	// XMFLOAT4X4 mProj = MathHelper::Identity4x4();
 
 	std::vector<std::unique_ptr<FrameResource>> mFrameResources;
 	FrameResource* mCurrFrameResources = nullptr;
 	int mCurrFrameResourceIndex = 0;
 	std::vector<std::unique_ptr<RenderItem>> mAllRitems;
-	// std::vector<std::unique_ptr<RenderItem>> mOpaqueArr;
-	// std::vector<std::unique_ptr<RenderItem>> mTransparentArr;
-	// std::vector<std::unique_ptr<RenderItem>> mAlphaTestArr;
-	// std::vector<std::unique_ptr<RenderItem>> mStencilMirrorsArr;
-	// std::vector<std::unique_ptr<RenderItem>> mRelectedArr;
 
 	std::vector<RenderItem *> mRitemLayer[(int)RenderLayer::Count];
-
-	// std::vector<RenderItem *> mOpaqueRitems;
-	// std::vector<RenderItem *> mTransparentRitems;
-	// std::vector<RenderItem *> mAlphaTestRitems;
-	// std::vector<RenderItem *> mStencilMirrorsRitems;
-	// std::vector<RenderItem *> mRelectedRitems;
 
 	RenderItem* mSkullRitem = nullptr;
 	RenderItem* mFloorRitem = nullptr;
@@ -166,9 +156,9 @@ private:
 	std::unique_ptr<Waves> mWaves;
 	RenderItem *mWavesRitem = nullptr;
 
-	float mTheta = 1.5f*XM_PI;
-	float mPhi = XM_PIDIV4;
-	float mRadius = 15.0f;
+	// float mTheta = 1.5f*XM_PI;
+	// float mPhi = XM_PIDIV4;
+	// float mRadius = 15.0f;
 
 	POINT mLastMousePos;
 	UINT mCbvSrvDescriptorSize;
@@ -178,6 +168,8 @@ private:
 	// blur argv
 	bool needBlur = true;
 	int blurCount;
+
+	Camera mCamera;
 
 	UINT posState;
 	UINT gColorState;

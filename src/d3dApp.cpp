@@ -152,8 +152,7 @@ void D3DApp::CreateRtvAndDsvDescriptorHeaps()
 			&SrvHeapDesc, IID_PPV_ARGS(mImGUIHeap.GetAddressOf())));
 }
 
-void D3DApp::OnResize()
-{
+void D3DApp::OnResize() {
 	assert(md3dDevice);
 	assert(mSwapChain);
 	assert(mDirectCmdListAlloc);
@@ -170,18 +169,17 @@ void D3DApp::OnResize()
 
 	// resize 交换链
 	ThrowIfFailed(mSwapChain->ResizeBuffers(
-		SwapChainBufferCount,
-		mClientWidth, mClientHeight,
-		mBackBufferFormat,
-		DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH));
+			SwapChainBufferCount,
+			mClientWidth, mClientHeight,
+			mBackBufferFormat,
+			DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH));
 
 	mCurrBackBuffer = 0;
 
 	// 资源不能与渲染流水线中的阶段直接绑定,所以必须先为资源创建视图(描述符)
 	// 描述符堆句柄
 	CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHeapHandle(mRtvHeap->GetCPUDescriptorHandleForHeapStart());
-	for (UINT i = 0; i < SwapChainBufferCount; i++)
-	{
+	for (UINT i = 0; i < SwapChainBufferCount; i++) {
 		// 为了将后台缓冲区绑定到流水线的输出合并阶段
 		// 需要为后台缓冲区创建RTV
 		// 第一步就是:获取交换链中的缓冲区资源
@@ -218,23 +216,22 @@ void D3DApp::OnResize()
 
 	// 创建深度模板缓冲区
 	ThrowIfFailed(md3dDevice->CreateCommittedResource(
-		get_rvalue_ptr(CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT)), // (资源欲提交至的)堆所具有的属性,深度模板缓冲区上传至默认堆.默认堆的资源只有GPU可以访问
-		D3D12_HEAP_FLAG_NONE, // 与堆有关的额外选项标志
-		&depthStencilDesc,
-		D3D12_RESOURCE_STATE_COMMON, // 资源创建时的初始状态
-		&optClear, // 描述用于清除资源的优化值
-		IID_PPV_ARGS(mDepthStencilBuffer.GetAddressOf())));
+			get_rvalue_ptr(CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT)), // (资源欲提交至的)堆所具有的属性,深度模板缓冲区上传至默认堆.默认堆的资源只有GPU可以访问
+			D3D12_HEAP_FLAG_NONE, // 与堆有关的额外选项标志
+			&depthStencilDesc,
+			D3D12_RESOURCE_STATE_COMMON, // 资源创建时的初始状态
+			&optClear, // 描述用于清除资源的优化值
+			IID_PPV_ARGS(mDepthStencilBuffer.GetAddressOf())));
 
 	// 创建DSV
 	md3dDevice->CreateDepthStencilView(mDepthStencilBuffer.Get(), nullptr, DepthStencilView());
 
 	// 将资源从初始状态转换为深度缓冲
-	mCommandList->ResourceBarrier(1, get_rvalue_ptr(CD3DX12_RESOURCE_BARRIER::Transition(mDepthStencilBuffer.Get(),
-		D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_DEPTH_WRITE)));
+	mCommandList->ResourceBarrier(1, get_rvalue_ptr(CD3DX12_RESOURCE_BARRIER::Transition(mDepthStencilBuffer.Get(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_DEPTH_WRITE)));
 
 	// 执行resize命令
 	ThrowIfFailed(mCommandList->Close());
-	ID3D12CommandList* cmdLists[] = { mCommandList.Get() };
+	ID3D12CommandList *cmdLists[] = { mCommandList.Get() };
 	mCommandQueue->ExecuteCommandLists(_countof(cmdLists), cmdLists); // 将命令列表里的命令添加到命令队列中
 
 	// 等待resize完成
@@ -248,7 +245,7 @@ void D3DApp::OnResize()
 	mScreenViewport.MinDepth = 0.0f;
 	mScreenViewport.MaxDepth = 1.0f;
 
-	mScissorRect = { 0,0,mClientWidth,mClientHeight };
+	mScissorRect = { 0, 0, mClientWidth, mClientHeight };
 }
 
 #ifndef __IMGUI
@@ -443,15 +440,15 @@ bool D3DApp::InitMainWindow()
 	mhMainWnd = CreateWindow(
 		L"MainWnd", // 采用前面注册的WNDCLASS实例
 		mMainWndCaption.c_str(), // 窗口标题
-		// WS_OVERLAPPEDWINDOW, // 窗口的样式标志
-		// CW_USEDEFAULT, // x坐标
-		// CW_USEDEFAULT, // y坐标
-		// width, // 窗口宽度
-		// height, // 窗口高度
-		WS_OVERLAPPEDWINDOW | WS_VISIBLE,
-		monitorInfoB.rcWork.left * 6 / 5, monitorInfoB.rcWork.top * 6 / 5,
-		width,
-		height,
+		WS_OVERLAPPEDWINDOW, // 窗口的样式标志
+		CW_USEDEFAULT, // x坐标
+		CW_USEDEFAULT, // y坐标
+		width, // 窗口宽度
+		height, // 窗口高度
+		// WS_OVERLAPPEDWINDOW | WS_VISIBLE,
+		// monitorInfoB.rcWork.left * 6 / 5, monitorInfoB.rcWork.top * 6 / 5,
+		// width,
+		// height,
 		0, // 父窗口句柄
 		0, // 菜单句柄
 		mhAppInst, // 应用程序实例句柄

@@ -5,6 +5,9 @@
 // 常量缓冲区			: 有描述符堆, 有描述符(视图), 上传堆, 通过根签名指定着色器寄存器, CPU每帧更新
 
 #include "BoxApp.h"
+#include <DirectXMath.h>
+#include <minwindef.h>
+#include <winuser.h>
 
 const int gNumFrameResources = 3;
 
@@ -16,7 +19,7 @@ std::vector<T> AddVectors(const std::vector<T> &vector1, const std::vector<T> &v
 	if (vector1.size() != vector2.size()) {
 		OutputDebugStringW(L"Error: Vectors must have the same size.");
 		return result;
-	}
+	} 
 
 	// 遍历向量并相加对应位置的元素
 	for (size_t i = 0; i < vector1.size(); ++i) {
@@ -27,12 +30,10 @@ std::vector<T> AddVectors(const std::vector<T> &vector1, const std::vector<T> &v
 }
 
 BoxApp::BoxApp(HINSTANCE hInstance) :
-	D3DApp(hInstance) {
-
+		D3DApp(hInstance) {
 }
 
 BoxApp::~BoxApp() {
-
 }
 
 bool BoxApp::Initialize() {
@@ -68,7 +69,7 @@ bool BoxApp::Initialize() {
 
 	// 执行初始化命令
 	ThrowIfFailed(mCommandList->Close())
-	ID3D12CommandList *cmdsList[] = { mCommandList.Get() };
+			ID3D12CommandList *cmdsList[] = { mCommandList.Get() };
 	mCommandQueue->ExecuteCommandLists(_countof(cmdsList), cmdsList);
 
 	// 等待初始化完成
@@ -80,15 +81,12 @@ bool BoxApp::Initialize() {
 void BoxApp::OnResize() {
 	D3DApp::OnResize();
 
-	// The window resized, so update the aspect ratio and recompute the projection matrix.
-	XMMATRIX P = XMMatrixPerspectiveFovLH(0.25f * MathHelper::Pi, AspectRatio(), 1.0f, 1000.0f);
-	XMStoreFloat4x4(&mProj, P);
+	mCamera.SetLens(0.25f * MathHelper::Pi, AspectRatio(), 1.0f, 1000.0f);
 
 	if (mBlurFilter != nullptr) {
 		mBlurFilter->OnResize(mClientWidth, mClientHeight);
 	}
 }
-
 
 void BoxApp::Update(const GameTimer &gt) {
 	OnKeyboardInput(gt);
@@ -172,8 +170,8 @@ void BoxApp::UpdateObjectCBs(const GameTimer &gt) {
 }
 
 void BoxApp::UpdateMainPassCB(const GameTimer &gt) {
-	XMMATRIX view = XMLoadFloat4x4(&mView);
-	XMMATRIX proj = XMLoadFloat4x4(&mProj);
+	XMMATRIX view = mCamera.GetView();
+	XMMATRIX proj = mCamera.GetProj();
 
 	XMMATRIX viewProj = XMMatrixMultiply(view, proj);
 	XMMATRIX invView = XMMatrixInverse(get_rvalue_ptr(XMMatrixDeterminant(view)), view);
@@ -245,17 +243,17 @@ void BoxApp::UpdateMaterialCBs(const GameTimer &gt) {
 
 void BoxApp::UpdateCamera(const GameTimer &gt) {
 	// Convert Spherical to Cartesian coordinates.
-	mEyePos.x = mRadius * sinf(mPhi) * cosf(mTheta);
-	mEyePos.z = mRadius * sinf(mPhi) * sinf(mTheta);
-	mEyePos.y = mRadius * cosf(mPhi);
+	// mEyePos.x = mRadius * sinf(mPhi) * cosf(mTheta);
+	// mEyePos.z = mRadius * sinf(mPhi) * sinf(mTheta);
+	// mEyePos.y = mRadius * cosf(mPhi);
 
 	// Build the view matrix.
-	XMVECTOR pos = XMVectorSet(mEyePos.x, mEyePos.y, mEyePos.z, 1.0f);
-	XMVECTOR target = XMVectorZero();
-	XMVECTOR up = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
-
-	XMMATRIX view = XMMatrixLookAtLH(pos, target, up);
-	XMStoreFloat4x4(&mView, view);
+	// XMVECTOR pos = XMVectorSet(mEyePos.x, mEyePos.y, mEyePos.z, 1.0f);
+	// XMVECTOR target = XMVectorZero();
+	// XMVECTOR up = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
+	//
+	// XMMATRIX view = XMMatrixLookAtLH(pos, target, up);
+	// XMStoreFloat4x4(&mView, view);
 }
 
 void BoxApp::UpdateWaves(const GameTimer &gt) {
@@ -299,6 +297,33 @@ void BoxApp::OnKeyboardInput(const GameTimer &gt) {
 		mIsWireframe = false;
 		misTransparent = false;
 	}
+
+	if (GetAsyncKeyState('W') & 0x8000) {
+		mCamera.Walk(10.0f * gt.DeltaTime());
+	}
+
+	if (GetAsyncKeyState('S') & 0x8000) {
+		mCamera.Walk(-10.0f * gt.DeltaTime());
+	}
+
+	if (GetAsyncKeyState('A') & 0x8000) {
+		mCamera.Strafe(-10.0f * gt.DeltaTime());
+	}
+
+	if (GetAsyncKeyState('D') & 0x8000) {
+		mCamera.Strafe(10.0f * gt.DeltaTime());
+	}
+
+	if (GetAsyncKeyState('Q') & 0x8000) {
+		mCamera.Up(10.0f * gt.DeltaTime());
+	}
+
+	if (GetAsyncKeyState('E') & 0x8000) {
+		mCamera.Up(-10.0f * gt.DeltaTime());
+	}
+
+
+	mCamera.UpdateViewMatrix();
 
 	// const float dt = gt.DeltaTime();
 	//
@@ -356,6 +381,17 @@ void BoxApp::OnKeyboardInput(const GameTimer &gt) {
 	// mShadowedSkullRitem->NumFramesDirty = gNumFrameResources;
 }
 
+void BoxApp::OnMouseMove(WPARAM btnState, int x, int y) {
+	if ((btnState & MK_LBUTTON) != 0) {
+		float dx = DirectX::XMConvertToRadians(0.25f * static_cast<float>(x - mLastMousePos.x));
+		float dy = DirectX::XMConvertToRadians(0.25f * static_cast<float>(y - mLastMousePos.y));
+		mCamera.Pitch(dy);
+		mCamera.RotateY(dx);
+	}
+	mLastMousePos.x = x;
+	mLastMousePos.y = y;
+}
+
 void BoxApp::Draw(const GameTimer &gt) {
 	auto cmdListAlloc = mCurrFrameResources->CmdListAlloc;
 	ThrowIfFailed(cmdListAlloc->Reset());
@@ -382,8 +418,7 @@ void BoxApp::Draw(const GameTimer &gt) {
 	mCommandList->RSSetViewports(1, &mScreenViewport);
 	mCommandList->RSSetScissorRects(1, &mScissorRect);
 
-	mCommandList->ResourceBarrier(1, get_rvalue_ptr(CD3DX12_RESOURCE_BARRIER::Transition(CurrentBackBuffer(),
-			D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET)));
+	mCommandList->ResourceBarrier(1, get_rvalue_ptr(CD3DX12_RESOURCE_BARRIER::Transition(CurrentBackBuffer(), D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET)));
 	mCommandList->ClearRenderTargetView(CurrentBackBufferView(), (float *)&mMainPassCB.FogColor, 0, nullptr);
 
 	// mCommandList->ClearRenderTargetView(CurrentBackBufferView(), Colors::LightSteelBlue, 0, nullptr);
@@ -427,14 +462,16 @@ void BoxApp::Draw(const GameTimer &gt) {
 
 	mCommandList->SetPipelineState(mPSOs["transparent"].Get());
 	DrawRenderItems(mCommandList.Get(), mRitemLayer[static_cast<int>(RenderLayer::Transparent)]);
+	mCommandList->ResourceBarrier(1, get_rvalue_ptr(CD3DX12_RESOURCE_BARRIER::Transition(CurrentBackBuffer(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT)));
 
-	if (this->needBlur) {
-		mBlurFilter->Execute(mCommandList.Get(), mPostProcessRootSignature.Get(),
-				mPSOs["horzBlur"].Get(), mPSOs["vertBlur"].Get(), CurrentBackBuffer(), this->blurCount);
-		mCommandList->ResourceBarrier(1, get_rvalue_ptr(CD3DX12_RESOURCE_BARRIER::Transition(CurrentBackBuffer(), D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_COPY_DEST)));
-		mCommandList->SetDescriptorHeaps(1, mImGUIHeap.GetAddressOf());
-		mCommandList->CopyResource(CurrentBackBuffer(), mBlurFilter->Output());
-	}
+	// if (this->needBlur) {
+	mBlurFilter->Execute(mCommandList.Get(), mPostProcessRootSignature.Get(),
+			mPSOs["horzBlur"].Get(), mPSOs["vertBlur"].Get(), CurrentBackBuffer(), this->blurCount);
+	mCommandList->ResourceBarrier(1, get_rvalue_ptr(CD3DX12_RESOURCE_BARRIER::Transition(CurrentBackBuffer(), D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_COPY_DEST)));
+	mCommandList->SetDescriptorHeaps(1, mImGUIHeap.GetAddressOf());
+	mCommandList->CopyResource(CurrentBackBuffer(), mBlurFilter->Output());
+	mCommandList->ResourceBarrier(1, get_rvalue_ptr(CD3DX12_RESOURCE_BARRIER::Transition(CurrentBackBuffer(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_RENDER_TARGET)));
+	// }
 #ifndef __IMGUI
 	mCommandList->SetDescriptorHeaps(1, mImGUIHeap.GetAddressOf());
 	ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), mCommandList.Get());
@@ -501,35 +538,35 @@ void BoxApp::OnMouseUp(WPARAM btnState, int x, int y) {
 	ReleaseCapture();
 }
 
-void BoxApp::OnMouseMove(WPARAM btnState, int x, int y) {
-	if ((btnState & MK_LBUTTON) != 0) {
-		// Make each pixel correspond to a quarter of a degree.
-		float dx = XMConvertToRadians(0.25f * static_cast<float>(x - mLastMousePos.x));
-		float dy = XMConvertToRadians(0.25f * static_cast<float>(y - mLastMousePos.y));
-
-		// Update angles based on input to orbit camera around box.
-		mTheta += -dx; // 觉得原来的别扭,这里我换了方向
-		mPhi += -dy;
-
-		// Restrict the angle mPhi.
-		mPhi = MathHelper::Clamp(mPhi, 0.1f, MathHelper::Pi - 0.1f);
-	}
-	if ((btnState & MK_RBUTTON) != 0) // 原来是 else if, 不顺畅
-	{
-		// Make each pixel correspond to 0.005 unit in the scene.
-		float dx = 0.005f * static_cast<float>(x - mLastMousePos.x);
-		float dy = 0.005f * static_cast<float>(y - mLastMousePos.y);
-
-		// Update the camera radius based on input.
-		mRadius += -(dx - dy); // 我换了方向
-
-		// Restrict the radius.
-		mRadius = MathHelper::Clamp(mRadius, 3.0f, 15.0f);
-	}
-
-	mLastMousePos.x = x;
-	mLastMousePos.y = y;
-}
+// void BoxApp::OnMouseMove(WPARAM btnState, int x, int y) {
+// 	if ((btnState & MK_LBUTTON) != 0) {
+// 		// Make each pixel correspond to a quarter of a degree.
+// 		float dx = XMConvertToRadians(0.25f * static_cast<float>(x - mLastMousePos.x));
+// 		float dy = XMConvertToRadians(0.25f * static_cast<float>(y - mLastMousePos.y));
+//
+// 		// Update angles based on input to orbit camera around box.
+// 		mTheta += -dx; // 觉得原来的别扭,这里我换了方向
+// 		mPhi += -dy;
+//
+// 		// Restrict the angle mPhi.
+// 		mPhi = MathHelper::Clamp(mPhi, 0.1f, MathHelper::Pi - 0.1f);
+// 	}
+// 	if ((btnState & MK_RBUTTON) != 0) // 原来是 else if, 不顺畅
+// 	{
+// 		// Make each pixel correspond to 0.005 unit in the scene.
+// 		float dx = 0.005f * static_cast<float>(x - mLastMousePos.x);
+// 		float dy = 0.005f * static_cast<float>(y - mLastMousePos.y);
+//
+// 		// Update the camera radius based on input.
+// 		mRadius += -(dx - dy); // 我换了方向
+//
+// 		// Restrict the radius.
+// 		mRadius = MathHelper::Clamp(mRadius, 3.0f, 15.0f);
+// 	}
+//
+// 	mLastMousePos.x = x;
+// 	mLastMousePos.y = y;
+// }
 
 void BoxApp::BuildDescriptorHeaps() {
 	UINT objCount = 0;
@@ -701,7 +738,6 @@ void BoxApp::BuildConstantBufferViews() {
 
 		md3dDevice->CreateConstantBufferView(&cbvDesc, handle);
 	}
-
 }
 
 void BoxApp::BuildConstantBuffers() {
@@ -808,7 +844,7 @@ void BoxApp::BuildRootSignature() {
 	slotRootParameter[2].InitAsConstantBufferView(1); // register b1
 	slotRootParameter[3].InitAsConstantBufferView(2); // register b2
 
-	auto staticSamplers = GetStaticSamplers1(); // register s0 ~ s6
+	auto staticSamplers = GetStaticSamplers(); // register s0 ~ s6
 
 	// 根签名是根参数数组
 	CD3DX12_ROOT_SIGNATURE_DESC rootSigDesc(4, slotRootParameter,
@@ -827,10 +863,10 @@ void BoxApp::BuildRootSignature() {
 	ThrowIfFailed(hr);
 
 	ThrowIfFailed(md3dDevice->CreateRootSignature(
-		0,
-		serializedRootSig->GetBufferPointer(),
-		serializedRootSig->GetBufferSize(),
-		IID_PPV_ARGS(mRootSignature.GetAddressOf())));
+			0,
+			serializedRootSig->GetBufferPointer(),
+			serializedRootSig->GetBufferSize(),
+			IID_PPV_ARGS(mRootSignature.GetAddressOf())));
 }
 
 void BoxApp::BuildWaveRootSignature() {
@@ -888,10 +924,10 @@ void BoxApp::BuildPostProcessRootSignature() {
 	ThrowIfFailed(hr);
 
 	ThrowIfFailed(md3dDevice->CreateRootSignature(
-		0,
-		serializedRootSig->GetBufferPointer(),
-		serializedRootSig->GetBufferSize(),
-		IID_PPV_ARGS(mPostProcessRootSignature.GetAddressOf())));
+			0,
+			serializedRootSig->GetBufferPointer(),
+			serializedRootSig->GetBufferSize(),
+			IID_PPV_ARGS(mPostProcessRootSignature.GetAddressOf())));
 }
 
 void BoxApp::BuildShadersAndInputLayout() {
@@ -936,13 +972,11 @@ void BoxApp::BuildPSO() {
 	ZeroMemory(&opaquePsoDesc, sizeof(D3D12_GRAPHICS_PIPELINE_STATE_DESC));
 	opaquePsoDesc.InputLayout = { mInputLayout.data(), static_cast<UINT>(mInputLayout.size()) };
 	opaquePsoDesc.pRootSignature = mRootSignature.Get();
-	opaquePsoDesc.VS =
-	{
+	opaquePsoDesc.VS = {
 		reinterpret_cast<BYTE *>(mShaders["standardVS"]->GetBufferPointer()),
 		mShaders["standardVS"]->GetBufferSize()
 	};
-	opaquePsoDesc.PS =
-	{
+	opaquePsoDesc.PS = {
 		reinterpret_cast<BYTE *>(mShaders["opaquePS"]->GetBufferPointer()),
 		mShaders["opaquePS"]->GetBufferSize()
 	};
@@ -961,13 +995,13 @@ void BoxApp::BuildPSO() {
 	HRESULT removeReason = md3dDevice->GetDeviceRemovedReason();
 	ThrowIfFailed(md3dDevice->CreateGraphicsPipelineState(&opaquePsoDesc, IID_PPV_ARGS(&mPSOs["opaque"])))
 
-	// PSO for opaque wireframe objects
+			// PSO for opaque wireframe objects
 
-	D3D12_GRAPHICS_PIPELINE_STATE_DESC opaqueWireframePsoDesc = opaquePsoDesc;
+			D3D12_GRAPHICS_PIPELINE_STATE_DESC opaqueWireframePsoDesc = opaquePsoDesc;
 	opaqueWireframePsoDesc.RasterizerState.FillMode = D3D12_FILL_MODE_WIREFRAME;
 	ThrowIfFailed(md3dDevice->CreateGraphicsPipelineState(&opaqueWireframePsoDesc, IID_PPV_ARGS(&mPSOs["opaque_wireframe"])))
 
-	D3D12_GRAPHICS_PIPELINE_STATE_DESC transparentPsoDesc = opaquePsoDesc;
+			D3D12_GRAPHICS_PIPELINE_STATE_DESC transparentPsoDesc = opaquePsoDesc;
 	D3D12_RENDER_TARGET_BLEND_DESC transparencyBlendDesc;
 	transparencyBlendDesc.BlendEnable = true;
 	transparencyBlendDesc.LogicOpEnable = false;
@@ -990,7 +1024,7 @@ void BoxApp::BuildPSO() {
 	alphaTestedPsoDesc.RasterizerState.CullMode = D3D12_CULL_MODE_NONE;
 	ThrowIfFailed(md3dDevice->CreateGraphicsPipelineState(&alphaTestedPsoDesc, IID_PPV_ARGS(&mPSOs["alphaTested"])))
 
-	CD3DX12_BLEND_DESC mirrorBlendState(D3D12_DEFAULT);
+			CD3DX12_BLEND_DESC mirrorBlendState(D3D12_DEFAULT);
 	mirrorBlendState.RenderTarget[0].RenderTargetWriteMask = 0;
 
 	D3D12_DEPTH_STENCIL_DESC mirrorDSS;
@@ -1087,7 +1121,7 @@ void BoxApp::BuildPSO() {
 
 	ThrowIfFailed(md3dDevice->CreateGraphicsPipelineState(&treeSpritePsoDesc, IID_PPV_ARGS(&mPSOs["treeSprites"])))
 
-	D3D12_COMPUTE_PIPELINE_STATE_DESC horzBlurPSO = {};
+			D3D12_COMPUTE_PIPELINE_STATE_DESC horzBlurPSO = {};
 	horzBlurPSO.pRootSignature = mPostProcessRootSignature.Get();
 	horzBlurPSO.CS = {
 		reinterpret_cast<BYTE *>(mShaders["horzBlurCS"]->GetBufferPointer()),
@@ -1219,10 +1253,10 @@ void BoxApp::BuildShapeGeometry1() {
 	geo->Name = "shapeGeo";
 
 	ThrowIfFailed(D3DCreateBlob(vbByteSize, &geo->VertexBufferCPU))
-	CopyMemory(geo->VertexBufferCPU->GetBufferPointer(), vertices.data(), vbByteSize);
+			CopyMemory(geo->VertexBufferCPU->GetBufferPointer(), vertices.data(), vbByteSize);
 
 	ThrowIfFailed(D3DCreateBlob(ibByteSize, &geo->IndexBufferCPU))
-	CopyMemory(geo->IndexBufferCPU->GetBufferPointer(), indices.data(), ibByteSize);
+			CopyMemory(geo->IndexBufferCPU->GetBufferPointer(), indices.data(), ibByteSize);
 
 	geo->VertexBufferGPU = d3dUtil::CreateDefaultBuffer(md3dDevice.Get(),
 			mCommandList.Get(), vertices.data(), vbByteSize, geo->VertexBufferUploader);
@@ -1485,9 +1519,8 @@ void BoxApp::BuildTreeSpritesGeometry() {
 	mGeometries["treeSpritesGeo"] = std::move(geo);
 }
 
-
 void BoxApp::BuildRenderItems() {
-	// 将每一个物体都存到 mAllRitems, mOpaqueRitems 中,相同物体的顶点/索引偏移相同,但是它们的世界矩阵不同,ObjIndex++. 
+	// 将每一个物体都存到 mAllRitems, mOpaqueRitems 中,相同物体的顶点/索引偏移相同,但是它们的世界矩阵不同,ObjIndex++.
 	// 渲染对象中存储了 World, ObjCBIndex, Geo, PrimitiveType, IndexCount, StartIndexLocation, BaseVertexLocation
 	auto boxRitem = std::make_unique<RenderItem>();
 	boxRitem->World = MathHelper::Identity4x4();
@@ -1637,7 +1670,7 @@ void BoxApp::BuildRenderItems() {
 	// mAllRitems.push_back(std::move(wallsRitem));
 	//
 	// auto mirrorRitem = std::make_unique<RenderItem>();
-	// mirrorRitem->World = MathHelper::Identity4x4(); 
+	// mirrorRitem->World = MathHelper::Identity4x4();
 	// mirrorRitem->TexTransform = MathHelper::Identity4x4();
 	// mirrorRitem->ObjCBIndex = objCBIndex++;
 	// mirrorRitem->Mat = mMaterials["iceMirror"].get();
@@ -1740,7 +1773,7 @@ void BoxApp::BuildWavesGeometryBuffers() {
 	geo->VertexBufferGPU = nullptr;
 
 	ThrowIfFailed(D3DCreateBlob(ibByteSize, &geo->IndexBufferCPU))
-	CopyMemory(geo->IndexBufferCPU->GetBufferPointer(), indices.data(), ibByteSize);
+			CopyMemory(geo->IndexBufferCPU->GetBufferPointer(), indices.data(), ibByteSize);
 
 	geo->IndexBufferGPU = d3dUtil::CreateDefaultBuffer(md3dDevice.Get(),
 			mCommandList.Get(), indices.data(), ibByteSize, geo->IndexBufferUploader);
@@ -1852,52 +1885,52 @@ void BoxApp::LoadTextures() {
 	woodCrateTex->Filename = L"Textures/WireFence.dds";
 	// 上传GPU
 	ThrowIfFailed(DirectX::CreateDDSTextureFromFile12(md3dDevice.Get(),
-		mCommandList.Get(), woodCrateTex->Filename.c_str(),
-		woodCrateTex->Resource, woodCrateTex->UploadHeap))
+			mCommandList.Get(), woodCrateTex->Filename.c_str(),
+			woodCrateTex->Resource, woodCrateTex->UploadHeap))
 
-	auto woodCrateTex2 = std::make_unique<Texture>();
+			auto woodCrateTex2 = std::make_unique<Texture>();
 	woodCrateTex2->Name = "woodCrateTex2";
 	woodCrateTex2->Filename = L"Textures/bricks2.dds";
 	// 上传GPU
 	ThrowIfFailed(DirectX::CreateDDSTextureFromFile12(md3dDevice.Get(),
-		mCommandList.Get(), woodCrateTex2->Filename.c_str(),
-		woodCrateTex2->Resource, woodCrateTex2->UploadHeap))
+			mCommandList.Get(), woodCrateTex2->Filename.c_str(),
+			woodCrateTex2->Resource, woodCrateTex2->UploadHeap))
 
-	auto water = std::make_unique<Texture>();
+			auto water = std::make_unique<Texture>();
 	water->Name = "water";
 	water->Filename = L"Textures/water1.dds";
 	// 上传GPU
 	ThrowIfFailed(DirectX::CreateDDSTextureFromFile12(md3dDevice.Get(),
-		mCommandList.Get(), water->Filename.c_str(),
-		water->Resource, water->UploadHeap));
+			mCommandList.Get(), water->Filename.c_str(),
+			water->Resource, water->UploadHeap));
 
 	auto checkboardTex = std::make_unique<Texture>();
 	checkboardTex->Name = "checkboardTex";
 	checkboardTex->Filename = L"Textures/checkboard.dds";
 	ThrowIfFailed(DirectX::CreateDDSTextureFromFile12(md3dDevice.Get(),
-		mCommandList.Get(), checkboardTex->Filename.c_str(),
-		checkboardTex->Resource, checkboardTex->UploadHeap));
+			mCommandList.Get(), checkboardTex->Filename.c_str(),
+			checkboardTex->Resource, checkboardTex->UploadHeap));
 
 	auto white1x1Tex = std::make_unique<Texture>();
 	white1x1Tex->Name = "white1x1Tex";
 	white1x1Tex->Filename = L"Textures/white1x1.dds";
 	ThrowIfFailed(DirectX::CreateDDSTextureFromFile12(md3dDevice.Get(),
-		mCommandList.Get(), white1x1Tex->Filename.c_str(),
-		white1x1Tex->Resource, white1x1Tex->UploadHeap));
+			mCommandList.Get(), white1x1Tex->Filename.c_str(),
+			white1x1Tex->Resource, white1x1Tex->UploadHeap));
 
 	auto iceTex = std::make_unique<Texture>();
 	iceTex->Name = "iceTex";
 	iceTex->Filename = L"Textures/ice.dds";
 	ThrowIfFailed(DirectX::CreateDDSTextureFromFile12(md3dDevice.Get(),
-		mCommandList.Get(), iceTex->Filename.c_str(),
-		iceTex->Resource, iceTex->UploadHeap));
+			mCommandList.Get(), iceTex->Filename.c_str(),
+			iceTex->Resource, iceTex->UploadHeap));
 
 	auto treeTex = std::make_unique<Texture>();
 	treeTex->Name = "treeTex";
 	treeTex->Filename = L"Textures/treeArray2.dds";
 	ThrowIfFailed(DirectX::CreateDDSTextureFromFile12(md3dDevice.Get(),
-		mCommandList.Get(), treeTex->Filename.c_str(),
-		treeTex->Resource, treeTex->UploadHeap));
+			mCommandList.Get(), treeTex->Filename.c_str(),
+			treeTex->Resource, treeTex->UploadHeap));
 
 	mTextures[woodCrateTex->Name] = std::move(woodCrateTex);
 	mTextures[woodCrateTex2->Name] = std::move(woodCrateTex2);
