@@ -55,57 +55,55 @@ void BlurFilter::Execute(ID3D12GraphicsCommandList *cmdList,
 
 	cmdList->SetComputeRootSignature(rootSig);
 
+	// para1: RootParameterIndex:0, cbuffer cbSettings : register(b0)
+	// para2: 32BitValues的数量, para3: data, para4: 在32BitValues内的偏移
 	cmdList->SetComputeRoot32BitConstants(0, 1, &blurRadius, 0);
 	cmdList->SetComputeRoot32BitConstants(0, (UINT)weights.size(), weights.data(), 1);
 
-	cmdList->ResourceBarrier(1, get_rvalue_ptr(CD3DX12_RESOURCE_BARRIER::Transition(input, D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_COPY_SOURCE)));
+	cmdList->ResourceBarrier(1, get_rvalue_ptr(CD3DX12_RESOURCE_BARRIER::Transition(input, D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_COPY_SOURCE)));
 
-	cmdList->ResourceBarrier(1, get_rvalue_ptr(CD3DX12_RESOURCE_BARRIER::Transition(mBlurMap0.Get(), D3D12_RESOURCE_STATE_GENERIC_READ, D3D12_RESOURCE_STATE_COPY_DEST)));
+	cmdList->ResourceBarrier(1, get_rvalue_ptr(CD3DX12_RESOURCE_BARRIER::Transition(mBlurMap0.Get(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_COPY_DEST)));
 
-	// Copy the input (back-buffer in this example) to BlurMap0.
+	// 将input(这里是back-buffer)拷贝到BlurMap0
 	cmdList->CopyResource(mBlurMap0.Get(), input);
 
 	cmdList->ResourceBarrier(1, get_rvalue_ptr(CD3DX12_RESOURCE_BARRIER::Transition(mBlurMap0.Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_GENERIC_READ)));
-
-	cmdList->ResourceBarrier(1, get_rvalue_ptr(CD3DX12_RESOURCE_BARRIER::Transition(mBlurMap1.Get(), D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_UNORDERED_ACCESS)));
+	// 注意资源状态的转换
+	cmdList->ResourceBarrier(1, get_rvalue_ptr(CD3DX12_RESOURCE_BARRIER::Transition(mBlurMap1.Get(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_UNORDERED_ACCESS)));
 
 	for (int i = 0; i < blurCount; ++i) {
-		//
-		// Horizontal Blur pass.
-		//
-
+		// 水平模糊过程
 		cmdList->SetPipelineState(horzBlurPSO);
 
-		cmdList->SetComputeRootDescriptorTable(1, mBlur0GpuSrv);
-		cmdList->SetComputeRootDescriptorTable(2, mBlur1GpuUav);
+		// 纹理输入: 给输入的纹理创建SRV(着色器资源视图),再作为参数传入根参数,就能将纹理绑定为着色器的输入资源
+		// RootParameterIndex:1, Texture2D gInput : register(t0)
+		cmdList->SetComputeRootDescriptorTable(1, mBlur0GpuSrv); // mBlur0GpuSrv是输入
+		// RootParameterIndex:2, RWTexture2D<float4> gOutput : register(u0)
+		cmdList->SetComputeRootDescriptorTable(2, mBlur1GpuUav); // mBlur1GpuUav是输出
 
-		// How many groups do we need to dispatch to cover a row of pixels, where each
-		// group covers 256 pixels (the 256 is defined in the ComputeShader).
+		// 若每个线程能处理256个像素(256这个值是在计算着色器中定义的),那么处理一行像素需要分派多少个线程组
 		UINT numGroupsX = (UINT)ceilf(mWidth / 256.0f);
-		cmdList->Dispatch(numGroupsX, mHeight, 1);
-
-		cmdList->ResourceBarrier(1, get_rvalue_ptr(CD3DX12_RESOURCE_BARRIER::Transition(mBlurMap0.Get(), D3D12_RESOURCE_STATE_GENERIC_READ, D3D12_RESOURCE_STATE_UNORDERED_ACCESS)));
-
-		cmdList->ResourceBarrier(1, get_rvalue_ptr(CD3DX12_RESOURCE_BARRIER::Transition(mBlurMap1.Get(), D3D12_RESOURCE_STATE_GENERIC_READ, D3D12_RESOURCE_STATE_UNORDERED_ACCESS)));
-
-		//
-		// Vertical Blur pass.
-		//
-
-		cmdList->SetPipelineState(vertBlurPSO);
-
-		cmdList->SetComputeRootDescriptorTable(1, mBlur1GpuSrv);
-		cmdList->SetComputeRootDescriptorTable(2, mBlur0GpuUav);
-
-		// How many groups do we need to dispatch to cover a column of pixels, where each
-		// group covers 256 pixels  (the 256 is defined in the ComputeShader).
-		UINT numGroupsY = (UINT)ceilf(mHeight / 256.0f);
-		cmdList->Dispatch(mWidth, numGroupsY, 1);
+		cmdList->Dispatch(numGroupsX, mHeight, 1); // 可以理解在这里就在计算着色器中计算,并且直接计算完成了吗?
 
 		cmdList->ResourceBarrier(1, get_rvalue_ptr(CD3DX12_RESOURCE_BARRIER::Transition(mBlurMap0.Get(), D3D12_RESOURCE_STATE_GENERIC_READ, D3D12_RESOURCE_STATE_UNORDERED_ACCESS)));
 
 		cmdList->ResourceBarrier(1, get_rvalue_ptr(CD3DX12_RESOURCE_BARRIER::Transition(mBlurMap1.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_GENERIC_READ)));
+
+		// 垂直模糊过程
+		cmdList->SetPipelineState(vertBlurPSO);
+
+		cmdList->SetComputeRootDescriptorTable(1, mBlur1GpuSrv); // mBlur1GpuSrv是输入
+		cmdList->SetComputeRootDescriptorTable(2, mBlur0GpuUav); // mBlur0GpuUav是输出
+
+		UINT numGroupsY = (UINT)ceilf(mHeight / 256.0f);
+		cmdList->Dispatch(mWidth, numGroupsY, 1);
+
+		cmdList->ResourceBarrier(1, get_rvalue_ptr(CD3DX12_RESOURCE_BARRIER::Transition(mBlurMap0.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_GENERIC_READ)));
+
+		cmdList->ResourceBarrier(1, get_rvalue_ptr(CD3DX12_RESOURCE_BARRIER::Transition(mBlurMap1.Get(), D3D12_RESOURCE_STATE_GENERIC_READ, D3D12_RESOURCE_STATE_UNORDERED_ACCESS)));
 	}
+	cmdList->ResourceBarrier(1, get_rvalue_ptr(CD3DX12_RESOURCE_BARRIER::Transition(mBlurMap0.Get(), D3D12_RESOURCE_STATE_GENERIC_READ, D3D12_RESOURCE_STATE_COMMON)));
+	cmdList->ResourceBarrier(1, get_rvalue_ptr(CD3DX12_RESOURCE_BARRIER::Transition(mBlurMap1.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COMMON)));
 }
 
 
