@@ -160,15 +160,17 @@ float4 PS(VertexOut pin) : SV_Target
     uint diffuseTexIndex = matData.gDiffuseMapIndex;
 
     //在数组中动态地查找纹理
-    diffuseAlbedo *= gDiffuseMap[diffuseTexIndex].Sample(gsamAnisotropicWrap, pin.UV);
-    
-    float3 worldNormal = normalize(pin.WorldNormal);
-    float3 worldView = normalize(gEyePosW - pin.WorldPos);
+    diffuseAlbedo *= gDiffuseMap[diffuseTexIndex].Sample(gsamAnisotropicWrap, pin.UV0);
+    #ifdef ALPHA_TEST
+	clip(diffuseAlbedo.a - 0.1f);
+	#endif
+    float3 worldNormal = normalize(pin.NormalW);
+    float3 worldView = normalize(gCBPass.gEyePosW - pin.PosW);
     
     Material mat = { diffuseAlbedo, fresnelR0, roughness };
     float3 shadowFactor = 1.0f;//暂时使用1.0，不对计算产生影响
-    float4 directLight = ComputerLighting(gLights, mat, pin.WorldPos, worldNormal, worldView, shadowFactor);
-    float4 ambient = gAmbientLight * diffuseAlbedo;
+    float4 directLight = ComputeLighting(gCBPass.gLights, mat, pin.PosW, worldNormal, worldView, shadowFactor);
+    float4 ambient = gCBPass.gAmbientLight * diffuseAlbedo;
     float4 diffuse = directLight * diffuseAlbedo;
     float4 finalCol = ambient + diffuse;
     finalCol.a = diffuseAlbedo.a;

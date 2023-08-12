@@ -438,10 +438,6 @@ void BoxApp::Draw(const GameTimer &gt) {
 
 	mCommandList->OMSetRenderTargets(1, get_rvalue_ptr(CurrentBackBufferView()), true, get_rvalue_ptr(DepthStencilView()));
 
-	// 设置 mCbvHeap,里面为每个帧资源的每一个物体和过程常量设了一个描述符,
-	// 将帧资源中的物体缓存和过程缓存使用 index*bytesize,通过handle偏移绑定,
-	// 物体常量和过程常量缓存通过CopyData()赋值
-	// 其实PSO中有根签名
 	ID3D12DescriptorHeap *descriptorHeaps1[] = { mCbvHeap.Get() };
 	mCommandList->SetDescriptorHeaps(_countof(descriptorHeaps1), descriptorHeaps1);
 	mCommandList->SetGraphicsRootSignature(mRootSignature.Get());
@@ -450,13 +446,14 @@ void BoxApp::Draw(const GameTimer &gt) {
 	ID3D12DescriptorHeap *descriptorHeaps[] = { mSrvHeap.Get() };
 	mCommandList->SetDescriptorHeaps(_countof(descriptorHeaps), descriptorHeaps);
 	mCommandList->SetGraphicsRootSignature(mRootSignature.Get());
+	mCommandList->SetGraphicsRootDescriptorTable(0, mSrvHeap->GetGPUDescriptorHandleForHeapStart());
 
 	auto matSB = mCurrFrameResources->MaterialBuffer->Resource();
 	mCommandList->SetGraphicsRootShaderResourceView(2, //根参数索引
-			matSB->GetGPUVirtualAddress()); //子资源地址
+			matSB->GetGPUVirtualAddress()); //子资源地址  
 #endif
 	auto passCB = mCurrFrameResources->PassCB->Resource();
-	mCommandList->SetGraphicsRootConstantBufferView(2, passCB->GetGPUVirtualAddress());
+	mCommandList->SetGraphicsRootConstantBufferView(3, passCB->GetGPUVirtualAddress());
 
 	DrawRenderItems(mCommandList.Get(), mRitemLayer[static_cast<int>(RenderLayer::Opaque)]);
 
@@ -464,25 +461,25 @@ void BoxApp::Draw(const GameTimer &gt) {
 	mCommandList->SetPipelineState(mPSOs["alphaTested"].Get());
 	DrawRenderItems(mCommandList.Get(), mRitemLayer[static_cast<int>(RenderLayer::AlphaTest)]);
 
-	mCommandList->OMSetStencilRef(1);
-	mCommandList->SetPipelineState(mPSOs["markStencilMirrors"].Get());
-	DrawRenderItems(mCommandList.Get(), mRitemLayer[static_cast<int>(RenderLayer::Mirrors)]);
+	// mCommandList->OMSetStencilRef(1);
+	// mCommandList->SetPipelineState(mPSOs["markStencilMirrors"].Get());
+	// DrawRenderItems(mCommandList.Get(), mRitemLayer[static_cast<int>(RenderLayer::Mirrors)]);
 	// //
-	UINT passCBByteSize = d3dUtil::CalcConstantBufferByteSize(sizeof(PassConstants));
-	mCommandList->SetGraphicsRootConstantBufferView(2, passCB->GetGPUVirtualAddress() + 1 * passCBByteSize);
-	mCommandList->SetPipelineState(mPSOs["drawStencilReflections"].Get());
-	DrawRenderItems(mCommandList.Get(), mRitemLayer[static_cast<int>(RenderLayer::Reflected)]);
+	// UINT passCBByteSize = d3dUtil::CalcConstantBufferByteSize(sizeof(PassConstants));
+	// mCommandList->SetGraphicsRootConstantBufferView(3, passCB->GetGPUVirtualAddress() + 1 * passCBByteSize);
+	// mCommandList->SetPipelineState(mPSOs["drawStencilReflections"].Get());
+	// DrawRenderItems(mCommandList.Get(), mRitemLayer[static_cast<int>(RenderLayer::Reflected)]);
 
-	mCommandList->SetGraphicsRootConstantBufferView(2, passCB->GetGPUVirtualAddress());
-	mCommandList->OMSetStencilRef(0);
-	mCommandList->SetPipelineState(mPSOs["shadow"].Get());
-	DrawRenderItems(mCommandList.Get(), mRitemLayer[static_cast<int>(RenderLayer::Shadow)]);
+	// mCommandList->SetGraphicsRootConstantBufferView(3, passCB->GetGPUVirtualAddress());
+	// mCommandList->OMSetStencilRef(0);
+	// mCommandList->SetPipelineState(mPSOs["shadow"].Get());
+	// DrawRenderItems(mCommandList.Get(), mRitemLayer[static_cast<int>(RenderLayer::Shadow)]);
 
-	mCommandList->SetPipelineState(mPSOs["treeSprites"].Get());
-	DrawRenderItems(mCommandList.Get(), mRitemLayer[static_cast<int>(RenderLayer::AlphaTestedTreeSprites)]);
+	// mCommandList->SetPipelineState(mPSOs["treeSprites"].Get());
+	// DrawRenderItems(mCommandList.Get(), mRitemLayer[static_cast<int>(RenderLayer::AlphaTestedTreeSprites)]);
 
-	mCommandList->SetPipelineState(mPSOs["transparent"].Get());
-	DrawRenderItems(mCommandList.Get(), mRitemLayer[static_cast<int>(RenderLayer::Transparent)]);
+	// mCommandList->SetPipelineState(mPSOs["transparent"].Get());
+	// DrawRenderItems(mCommandList.Get(), mRitemLayer[static_cast<int>(RenderLayer::Transparent)]);
 
 	// if (this->needBlur) {
 	// mBlurFilter->Execute(mCommandList.Get(), mPostProcessRootSignature.Get(),
@@ -498,14 +495,14 @@ void BoxApp::Draw(const GameTimer &gt) {
 #endif
 
 	// mCommandList->ResourceBarrier(1, get_rvalue_ptr(CD3DX12_RESOURCE_BARRIER::Transition(CurrentBackBuffer(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_COPY_SOURCE)));
-
-	mBlurFilter->Execute(mCommandList.Get(), mPostProcessRootSignature.Get(),
-			mPSOs["horzBlur"].Get(), mPSOs["vertBlur"].Get(), CurrentBackBuffer(), 4);
-
-	mCommandList->ResourceBarrier(1, get_rvalue_ptr(CD3DX12_RESOURCE_BARRIER::Transition(CurrentBackBuffer(), D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_COPY_DEST)));
-
-	mCommandList->CopyResource(CurrentBackBuffer(), mBlurFilter->Output());
-	mCommandList->ResourceBarrier(1, get_rvalue_ptr(CD3DX12_RESOURCE_BARRIER::Transition(CurrentBackBuffer(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_RENDER_TARGET)));
+	//
+	// mBlurFilter->Execute(mCommandList.Get(), mPostProcessRootSignature.Get(),
+	// 		mPSOs["horzBlur"].Get(), mPSOs["vertBlur"].Get(), CurrentBackBuffer(), 4);
+	//
+	// mCommandList->ResourceBarrier(1, get_rvalue_ptr(CD3DX12_RESOURCE_BARRIER::Transition(CurrentBackBuffer(), D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_COPY_DEST)));
+	//
+	// mCommandList->CopyResource(CurrentBackBuffer(), mBlurFilter->Output());
+	// mCommandList->ResourceBarrier(1, get_rvalue_ptr(CD3DX12_RESOURCE_BARRIER::Transition(CurrentBackBuffer(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_RENDER_TARGET)));
 	mCommandList->ResourceBarrier(1, get_rvalue_ptr(CD3DX12_RESOURCE_BARRIER::Transition(CurrentBackBuffer(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT)));
 	ThrowIfFailed(mCommandList->Close());
 
@@ -540,7 +537,7 @@ void BoxApp::DrawRenderItems(ID3D12GraphicsCommandList *cmdList, const std::vect
 		// CD3DX12_GPU_DESCRIPTOR_HANDLE tex(mSrvDescriptorHeap->GetGPUDescriptorHandleForHeapStart());
 		// tex.Offset(ri->Mat->DiffuseSrvHeapIndex, mCbvSrvDescriptorSize);
 
-		cmdList->SetGraphicsRootConstantBufferView(0, objCBAddress);
+		cmdList->SetGraphicsRootConstantBufferView(1, objCBAddress);
 
 		cmdList->DrawIndexedInstanced(ri->IndexCount, 1, ri->StartIndexLocation, ri->BaseVertexLocation, 0);
 	}
@@ -886,7 +883,7 @@ std::array<const CD3DX12_STATIC_SAMPLER_DESC, 1> BoxApp::GetStaticSamplers1() {
 void BoxApp::BuildRootSignature() {
 #ifdef DYNAMIC_RESOURCES
 	CD3DX12_DESCRIPTOR_RANGE srvTable;
-	srvTable.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 4, 0);
+	srvTable.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 6, 0);
 	
 	CD3DX12_ROOT_PARAMETER slotRootParameter[4];
 	slotRootParameter[0].InitAsDescriptorTable(1, &srvTable, D3D12_SHADER_VISIBILITY_PIXEL);
@@ -1014,12 +1011,13 @@ void BoxApp::BuildShadersAndInputLayout() {
 #ifdef DYNAMIC_RESOURCES
 	mShaders["standardVS"] = d3dUtil::CompileShader(L"../../Shaders\\color.hlsl", dynamicResourcesDefines, "VS", "vs_5_1");
 	mShaders["opaquePS"] = d3dUtil::CompileShader(L"../../Shaders\\color.hlsl", dynamicResourcesDefines, "PS", "ps_5_1");
+	mShaders["alphaTestedPS"] = d3dUtil::CompileShader(L"../../Shaders\\color.hlsl", dynamicResourcesDefines, "PS", "ps_5_1");
 #else
 	mShaders["standardVS"] = d3dUtil::CompileShader(L"../../Shaders\\color.hlsl", nullptr, "VS", "vs_5_1");
 	mShaders["opaquePS"] = d3dUtil::CompileShader(L"../../Shaders\\color.hlsl", defines, "PS", "ps_5_1");
+	mShaders["alphaTestedPS"] = d3dUtil::CompileShader(L"../../Shaders\\color.hlsl", alphaTestDefines, "PS", "ps_5_1");
 #endif
 	
-	mShaders["alphaTestedPS"] = d3dUtil::CompileShader(L"../../Shaders\\color.hlsl", alphaTestDefines, "PS", "ps_5_1");
 	mShaders["treeSpriteVS"] = d3dUtil::CompileShader(L"../../Shaders\\TreeSprite.hlsl", nullptr, "VS", "vs_5_0");
 	mShaders["treeSpriteGS"] = d3dUtil::CompileShader(L"../../Shaders\\TreeSprite.hlsl", nullptr, "GS", "gs_5_0");
 	mShaders["treeSpritePS"] = d3dUtil::CompileShader(L"../../Shaders\\TreeSprite.hlsl", alphaTestDefines, "PS", "ps_5_0");
@@ -1176,25 +1174,25 @@ void BoxApp::BuildPSO() {
 
 	auto x = mShaders.find("treeSpriteVS");
 
-	D3D12_GRAPHICS_PIPELINE_STATE_DESC treeSpritePsoDesc = opaquePsoDesc;
-	ZeroMemory(&opaquePsoDesc, sizeof(D3D12_GRAPHICS_PIPELINE_STATE_DESC));
-	treeSpritePsoDesc.VS = {
-		reinterpret_cast<BYTE *>(mShaders["treeSpriteVS"]->GetBufferPointer()),
-		mShaders["treeSpriteVS"]->GetBufferSize()
-	};
-	treeSpritePsoDesc.GS = {
-		reinterpret_cast<BYTE *>(mShaders["treeSpriteGS"]->GetBufferPointer()),
-		mShaders["treeSpriteGS"]->GetBufferSize()
-	};
-	treeSpritePsoDesc.PS = {
-		reinterpret_cast<BYTE *>(mShaders["treeSpritePS"]->GetBufferPointer()),
-		mShaders["treeSpritePS"]->GetBufferSize()
-	};
-	treeSpritePsoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_POINT;
-	treeSpritePsoDesc.InputLayout = { mTreeSpriteInputLayout.data(), static_cast<UINT>(mTreeSpriteInputLayout.size()) };
-	treeSpritePsoDesc.RasterizerState.CullMode = D3D12_CULL_MODE_NONE;
-
-	ThrowIfFailed(md3dDevice->CreateGraphicsPipelineState(&treeSpritePsoDesc, IID_PPV_ARGS(&mPSOs["treeSprites"])))
+	// D3D12_GRAPHICS_PIPELINE_STATE_DESC treeSpritePsoDesc = opaquePsoDesc;
+	// ZeroMemory(&opaquePsoDesc, sizeof(D3D12_GRAPHICS_PIPELINE_STATE_DESC));
+	// treeSpritePsoDesc.VS = {
+	// 	reinterpret_cast<BYTE *>(mShaders["treeSpriteVS"]->GetBufferPointer()),
+	// 	mShaders["treeSpriteVS"]->GetBufferSize()
+	// };
+	// treeSpritePsoDesc.GS = {
+	// 	reinterpret_cast<BYTE *>(mShaders["treeSpriteGS"]->GetBufferPointer()),
+	// 	mShaders["treeSpriteGS"]->GetBufferSize()
+	// };
+	// treeSpritePsoDesc.PS = {
+	// 	reinterpret_cast<BYTE *>(mShaders["treeSpritePS"]->GetBufferPointer()),
+	// 	mShaders["treeSpritePS"]->GetBufferSize()
+	// };
+	// treeSpritePsoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_POINT;
+	// treeSpritePsoDesc.InputLayout = { mTreeSpriteInputLayout.data(), static_cast<UINT>(mTreeSpriteInputLayout.size()) };
+	// treeSpritePsoDesc.RasterizerState.CullMode = D3D12_CULL_MODE_NONE;
+	//
+	// ThrowIfFailed(md3dDevice->CreateGraphicsPipelineState(&treeSpritePsoDesc, IID_PPV_ARGS(&mPSOs["treeSprites"])))
 
 			D3D12_COMPUTE_PIPELINE_STATE_DESC horzBlurPSO = {};
 	horzBlurPSO.pRootSignature = mPostProcessRootSignature.Get();
@@ -1610,7 +1608,7 @@ void BoxApp::BuildRenderItems() {
 	boxRitem->Name = "box";
 	mRitemLayer[static_cast<int>(RenderLayer::AlphaTest)].push_back(boxRitem.get());
 	mAllRitems.push_back(std::move(boxRitem));
-
+	 
 	auto gridItem = std::make_unique<RenderItem>();
 	gridItem->World = MathHelper::Identity4x4();
 	gridItem->ObjCBIndex = 1;
@@ -1658,7 +1656,7 @@ void BoxApp::BuildRenderItems() {
 		XMStoreFloat4x4(&leftCylRitem->World, leftCylWorld);
 		leftCylRitem->ObjCBIndex = objCBIndex++;
 		leftCylRitem->Geo = mGeometries["shapeGeo"].get();
-		leftCylRitem->Mat = mMaterials["stone"].get();
+		leftCylRitem->Mat = mMaterials["skullMat"].get();
 		leftCylRitem->PrimitiveType = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
 		leftCylRitem->IndexCount = leftCylRitem->Geo->DrawArgs["cylinder"].IndexCount;
 		leftCylRitem->StartIndexLocation = leftCylRitem->Geo->DrawArgs["cylinder"].StartIndexLocation;
@@ -1667,7 +1665,7 @@ void BoxApp::BuildRenderItems() {
 		XMStoreFloat4x4(&rightCylRitem->World, rightCylWorld);
 		rightCylRitem->ObjCBIndex = objCBIndex++;
 		rightCylRitem->Geo = mGeometries["shapeGeo"].get();
-		rightCylRitem->Mat = mMaterials["stone"].get();
+		rightCylRitem->Mat = mMaterials["iceMirror"].get();
 		rightCylRitem->PrimitiveType = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
 		rightCylRitem->IndexCount = rightCylRitem->Geo->DrawArgs["cylinder"].IndexCount;
 		rightCylRitem->StartIndexLocation = rightCylRitem->Geo->DrawArgs["cylinder"].StartIndexLocation;
@@ -1677,7 +1675,7 @@ void BoxApp::BuildRenderItems() {
 		XMStoreFloat4x4(&leftSphereRitem->World, leftSphereWorld);
 		leftSphereRitem->ObjCBIndex = objCBIndex++;
 		leftSphereRitem->Geo = mGeometries["shapeGeo"].get();
-		leftSphereRitem->Mat = mMaterials["stone"].get();
+		leftSphereRitem->Mat = mMaterials["bricks"].get();
 		leftSphereRitem->PrimitiveType = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
 		leftSphereRitem->IndexCount = leftSphereRitem->Geo->DrawArgs["sphere"].IndexCount;
 		leftSphereRitem->StartIndexLocation = leftSphereRitem->Geo->DrawArgs["sphere"].StartIndexLocation;
@@ -1687,7 +1685,7 @@ void BoxApp::BuildRenderItems() {
 		XMStoreFloat4x4(&rightSphereRitem->World, rightSphereWorld);
 		rightSphereRitem->ObjCBIndex = objCBIndex++;
 		rightSphereRitem->Geo = mGeometries["shapeGeo"].get();
-		rightSphereRitem->Mat = mMaterials["stone"].get();
+		rightSphereRitem->Mat = mMaterials["checkertile"].get();
 		rightSphereRitem->PrimitiveType = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
 		rightSphereRitem->IndexCount = rightSphereRitem->Geo->DrawArgs["sphere"].IndexCount;
 		rightSphereRitem->StartIndexLocation = rightSphereRitem->Geo->DrawArgs["sphere"].StartIndexLocation;
