@@ -163,6 +163,9 @@ void BoxApp::UpdateObjectCBs(const GameTimer &gt) {
 			ObjectConstants objConstants;
 			XMStoreFloat4x4(&objConstants.World, XMMatrixTranspose(world));
 			XMStoreFloat4x4(&objConstants.TexTransform, XMMatrixTranspose(texTransform));
+			#ifdef DYNAMIC_RESOURCES
+			objConstants.materialIndex = e->Mat->MatCBIndex;
+			#endif
 			currObjectCB->CopyData(e->ObjCBIndex, objConstants);
 			e->NumFramesDirty--;
 		}
@@ -222,21 +225,30 @@ void BoxApp::UpdateReflectedPassCB(const GameTimer &gt) {
 }
 
 void BoxApp::UpdateMaterialCBs(const GameTimer &gt) {
-	auto currMaterialCB = mCurrFrameResources->MaterialCB.get();
+	auto currMatSB = mCurrFrameResources->MaterialBuffer.get();
 	for (auto &e : mMaterials) {
 		Material *mat = e.second.get();
 		if (mat->NumFramesDirty > 0) {
+		#ifdef DYNAMIC_RESOURCES
+			MaterialData matData;
+			matData.DiffuseAlbedo = mat->DiffuseAlbedo;
+			matData.FresnelR0 = mat->FresnelR0;
+			matData.Roughness = mat->Roughness;
 			XMMATRIX matTransform = XMLoadFloat4x4(&mat->MatTransform);
-
+			XMStoreFloat4x4(&matData.MatTransform, XMMatrixTranspose(matTransform));
+			matData.DiffuseMapIndex = mat->DiffuseSrvHeapIndex;
+			currMatSB->CopyData(mat->MatCBIndex, matData);
+			mat->NumFramesDirty--;
+		#else
+			XMMATRIX matTransform = XMLoadFloat4x4(&mat->MatTransform);
 			MaterialConstants matConstants;
 			matConstants.DiffuseAlbedo = mat->DiffuseAlbedo;
 			matConstants.FresnelR0 = mat->FresnelR0;
 			matConstants.Roughness = mat->Roughness;
 			XMStoreFloat4x4(&matConstants.MatTransform, XMMatrixTranspose(matTransform));
-
-			currMaterialCB->CopyData(mat->MatCBIndex, matConstants);
-
+			currMatSB->CopyData(mat->MatCBIndex, matConstants);
 			mat->NumFramesDirty--;
+		#endif
 		}
 	}
 }
@@ -434,6 +446,15 @@ void BoxApp::Draw(const GameTimer &gt) {
 	mCommandList->SetDescriptorHeaps(_countof(descriptorHeaps1), descriptorHeaps1);
 	mCommandList->SetGraphicsRootSignature(mRootSignature.Get());
 
+#ifdef DYNAMIC_RESOURCES
+	ID3D12DescriptorHeap *descriptorHeaps[] = { mSrvHeap.Get() };
+	mCommandList->SetDescriptorHeaps(_countof(descriptorHeaps), descriptorHeaps);
+	mCommandList->SetGraphicsRootSignature(mRootSignature.Get());
+
+	auto matSB = mCurrFrameResources->MaterialBuffer->Resource();
+	mCommandList->SetGraphicsRootShaderResourceView(2, //根参数索引
+			matSB->GetGPUVirtualAddress()); //子资源地址
+#endif
 	auto passCB = mCurrFrameResources->PassCB->Resource();
 	mCommandList->SetGraphicsRootConstantBufferView(2, passCB->GetGPUVirtualAddress());
 
@@ -505,9 +526,25 @@ void BoxApp::DrawRenderItems(ID3D12GraphicsCommandList *cmdList, const std::vect
 	UINT objCBByteSize = d3dUtil::CalcConstantBufferByteSize(sizeof(ObjectConstants));
 	UINT matCBByteSize = d3dUtil::CalcConstantBufferByteSize(sizeof(MaterialConstants));
 	auto objectCB = mCurrFrameResources->ObjectCB->Resource();
-	auto materialCB = mCurrFrameResources->MaterialCB->Resource();
+	auto materialCB = mCurrFrameResources->MaterialBuffer->Resource();
+#ifdef DYNAMIC_RESOURCES
+	for (size_t i = 0; i < ritems.size(); ++i) {
+		auto ri = ritems[i];
 
-	// For each render item...
+		cmdList->IASetVertexBuffers(0, 1, get_rvalue_ptr(ri->Geo->VertexBufferView()));
+		cmdList->IASetIndexBuffer(get_rvalue_ptr(ri->Geo->IndexBufferView()));
+		cmdList->IASetPrimitiveTopology(ri->PrimitiveType);
+
+		D3D12_GPU_VIRTUAL_ADDRESS objCBAddress = objectCB->GetGPUVirtualAddress() + ri->ObjCBIndex * objCBByteSize;
+
+		// CD3DX12_GPU_DESCRIPTOR_HANDLE tex(mSrvDescriptorHeap->GetGPUDescriptorHandleForHeapStart());
+		// tex.Offset(ri->Mat->DiffuseSrvHeapIndex, mCbvSrvDescriptorSize);
+
+		cmdList->SetGraphicsRootConstantBufferView(0, objCBAddress);
+
+		cmdList->DrawIndexedInstanced(ri->IndexCount, 1, ri->StartIndexLocation, ri->BaseVertexLocation, 0);
+	}
+#else
 	for (size_t i = 0; i < ritems.size(); ++i) {
 		auto ri = ritems[i];
 		// Geo->VertexBufferView()中存储了顶点的起始位置和大小
@@ -533,6 +570,8 @@ void BoxApp::DrawRenderItems(ID3D12GraphicsCommandList *cmdList, const std::vect
 
 		cmdList->DrawIndexedInstanced(ri->IndexCount, 1, ri->StartIndexLocation, ri->BaseVertexLocation, 0);
 	}
+#endif
+	
 }
 
 void BoxApp::OnMouseDown(WPARAM btnState, int x, int y) {
@@ -704,9 +743,9 @@ void BoxApp::BuildConstantBufferViews() {
 		}
 	}
 
-	// material CBV
+#ifndef DYNAMIC_RESOURCES
 	for (int frameIndex = 0; frameIndex < gNumFrameResources; ++frameIndex) {
-		auto materialCB = mFrameResources[frameIndex]->MaterialCB->Resource();
+		auto materialCB = mFrameResources[frameIndex]->MaterialBuffer->Resource();
 		// for (UINT i = 0; i < mMaterials.size(); ++i) {
 		for (auto &m : mMaterials) {
 			D3D12_GPU_VIRTUAL_ADDRESS cbAddress = materialCB->GetGPUVirtualAddress(); // 这里将 World和描述符关联
@@ -727,6 +766,9 @@ void BoxApp::BuildConstantBufferViews() {
 			md3dDevice->CreateConstantBufferView(&cbvDesc, handle);
 		}
 	}
+#endif // !DYNAMIC_RESOURCES
+
+	
 
 	UINT passCBByteSize = d3dUtil::CalcConstantBufferByteSize(sizeof(PassConstants));
 
@@ -842,6 +884,16 @@ std::array<const CD3DX12_STATIC_SAMPLER_DESC, 1> BoxApp::GetStaticSamplers1() {
 }
 
 void BoxApp::BuildRootSignature() {
+#ifdef DYNAMIC_RESOURCES
+	CD3DX12_DESCRIPTOR_RANGE srvTable;
+	srvTable.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 4, 0);
+	
+	CD3DX12_ROOT_PARAMETER slotRootParameter[4];
+	slotRootParameter[0].InitAsDescriptorTable(1, &srvTable, D3D12_SHADER_VISIBILITY_PIXEL);
+	slotRootParameter[1].InitAsConstantBufferView(0);
+	slotRootParameter[2].InitAsShaderResourceView(0, 1);
+	slotRootParameter[3].InitAsConstantBufferView(1);
+#else
 	CD3DX12_DESCRIPTOR_RANGE texTable;
 	texTable.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0); // register t0
 
@@ -851,6 +903,8 @@ void BoxApp::BuildRootSignature() {
 	slotRootParameter[1].InitAsConstantBufferView(0); // register b0
 	slotRootParameter[2].InitAsConstantBufferView(1); // register b1
 	slotRootParameter[3].InitAsConstantBufferView(2); // register b2
+#endif
+	
 
 	auto staticSamplers = GetStaticSamplers(); // register s0 ~ s6
 
@@ -949,15 +1003,28 @@ void BoxApp::BuildShadersAndInputLayout() {
 		"ALPHA_TEST", "1",
 		nullptr, nullptr
 	};
+	
+	const D3D_SHADER_MACRO dynamicResourcesDefines[] = {
+		"FOG", "1",
+		"ALPHA_TEST", "1",
+		"DYNAMIC_RESOURCES", "1",
+		nullptr, nullptr
+	};
 
-	mShaders["standardVS"] = d3dUtil::CompileShader(L"Shaders\\color.hlsl", nullptr, "VS", "vs_5_1");
-	mShaders["opaquePS"] = d3dUtil::CompileShader(L"Shaders\\color.hlsl", defines, "PS", "ps_5_1");
-	mShaders["alphaTestedPS"] = d3dUtil::CompileShader(L"Shaders\\color.hlsl", alphaTestDefines, "PS", "ps_5_1");
-	mShaders["treeSpriteVS"] = d3dUtil::CompileShader(L"Shaders\\TreeSprite.hlsl", nullptr, "VS", "vs_5_0");
-	mShaders["treeSpriteGS"] = d3dUtil::CompileShader(L"Shaders\\TreeSprite.hlsl", nullptr, "GS", "gs_5_0");
-	mShaders["treeSpritePS"] = d3dUtil::CompileShader(L"Shaders\\TreeSprite.hlsl", alphaTestDefines, "PS", "ps_5_0");
-	mShaders["horzBlurCS"] = d3dUtil::CompileShader(L"Shaders\\Blur.hlsl", nullptr, "HorzBlurCS", "cs_5_0");
-	mShaders["vertBlurCS"] = d3dUtil::CompileShader(L"Shaders\\Blur.hlsl", nullptr, "VertBlurCS", "cs_5_0");
+#ifdef DYNAMIC_RESOURCES
+	mShaders["standardVS"] = d3dUtil::CompileShader(L"../../Shaders\\color.hlsl", dynamicResourcesDefines, "VS", "vs_5_1");
+	mShaders["opaquePS"] = d3dUtil::CompileShader(L"../../Shaders\\color.hlsl", dynamicResourcesDefines, "PS", "ps_5_1");
+#else
+	mShaders["standardVS"] = d3dUtil::CompileShader(L"../../Shaders\\color.hlsl", nullptr, "VS", "vs_5_1");
+	mShaders["opaquePS"] = d3dUtil::CompileShader(L"../../Shaders\\color.hlsl", defines, "PS", "ps_5_1");
+#endif
+	
+	mShaders["alphaTestedPS"] = d3dUtil::CompileShader(L"../../Shaders\\color.hlsl", alphaTestDefines, "PS", "ps_5_1");
+	mShaders["treeSpriteVS"] = d3dUtil::CompileShader(L"../../Shaders\\TreeSprite.hlsl", nullptr, "VS", "vs_5_0");
+	mShaders["treeSpriteGS"] = d3dUtil::CompileShader(L"../../Shaders\\TreeSprite.hlsl", nullptr, "GS", "gs_5_0");
+	mShaders["treeSpritePS"] = d3dUtil::CompileShader(L"../../Shaders\\TreeSprite.hlsl", alphaTestDefines, "PS", "ps_5_0");
+	mShaders["horzBlurCS"] = d3dUtil::CompileShader(L"../../Shaders\\Blur.hlsl", nullptr, "HorzBlurCS", "cs_5_0");
+	mShaders["vertBlurCS"] = d3dUtil::CompileShader(L"../../Shaders\\Blur.hlsl", nullptr, "VertBlurCS", "cs_5_0");
 	// mShaders["wavesUpdateCS"] = d3dUtil::CompileShader(L"Shaders\\WaveSim.hlsl", nullptr, "UpdateWavesCS", "cs_5_0");
 
 	// LPCSTR SemanticName; UINT SemanticIndex; DXGI_FORMAT Format; UINT InputSlot; UINT AlignedByteOffset; D3D12_INPUT_CLASSIFICATION InputSlotClass; UINT InstanceDataStepRate; D3D12_INPUT_ELEMENT_DESC;

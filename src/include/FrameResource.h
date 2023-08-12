@@ -11,6 +11,12 @@ struct ObjectConstants
 {
 	DirectX::XMFLOAT4X4 World = MathHelper::Identity4x4();
 	DirectX::XMFLOAT4X4 TexTransform = MathHelper::Identity4x4();
+#ifdef DYNAMIC_RESOURCES
+	UINT materialIndex = 0;
+	UINT matPad0;
+	UINT matPad1;
+	UINT matPad2;
+#endif
 };
 
 struct PassConstants
@@ -39,6 +45,22 @@ struct PassConstants
 	float gFogStart = 5.0f;
 	DirectX::XMFLOAT2 cbPerObjectPad3 = { 0.0, 0.0f };
 };
+
+#ifdef DYNAMIC_RESOURCES
+struct MaterialData {
+	DirectX::XMFLOAT4 DiffuseAlbedo = { 1.0f, 1.0f, 1.0f, 1.0f };
+	DirectX::XMFLOAT3 FresnelR0 = { 0.01f, 0.01f, 0.01f };
+	float Roughness = 64.0f;
+
+	// Used in texture mapping.
+	DirectX::XMFLOAT4X4 MatTransform = MathHelper::Identity4x4();
+
+	UINT DiffuseMapIndex = 0;
+	UINT MaterialPad0;
+	UINT MaterialPad1;
+	UINT MaterialPad2;
+};
+#endif
 
 struct Vertex
 {
@@ -72,7 +94,11 @@ public:
 		// that reference it.  So each frame needs their own cbuffers.
 		std::unique_ptr<UploadBuffer<PassConstants>> PassCB = nullptr;
 		std::unique_ptr<UploadBuffer<ObjectConstants>> ObjectCB = nullptr;
-		std::unique_ptr<UploadBuffer<MaterialConstants>> MaterialCB = nullptr;
+	#ifdef DYNAMIC_RESOURCES
+		std::unique_ptr<UploadBuffer<MaterialData>> MaterialBuffer = nullptr;
+	#else
+		std::unique_ptr<UploadBuffer<MaterialConstants>> MaterialBuffer = nullptr;	
+	#endif
 		std::unique_ptr<UploadBuffer<Vertex>> WavesVB = nullptr;
 
 		// Fence value to mark commands up to this fence point.  This lets us

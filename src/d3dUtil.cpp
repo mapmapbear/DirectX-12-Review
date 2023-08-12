@@ -1,6 +1,7 @@
 ﻿#include "d3dUtil.h"
 #include <comdef.h>
 #include <fstream>
+#include <type_traits>
 
 using Microsoft::WRL::ComPtr;
 

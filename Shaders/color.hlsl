@@ -27,21 +27,34 @@
 
 #include "LightingUtil.hlsl"
 
-//struct MaterialData {
-//	float4 gDiffuseAlbedo; //材质反照率
-//	float3 gFresnelR0; //RF(0)值，即材质的反射属性
-//	float gRoughness; //材质的粗糙度
-//	float4x4 gMatTransform; //UV动画变换矩阵
-//	uint gDiffuseMapIndex; //纹理数组索引
-//	uint gMatPad0;
-//	uint gMatPad1;
-//	uint gMatPad2;
-//};
-//
-//
-//StructuredBuffer<MaterialData> gMaterialData : register(t0, space1);
-Texture2D gDiffuseMap : register(t0); // 纹理
+#ifdef DYNAMIC_RESOURCES
+struct MaterialData {
+	float4 gDiffuseAlbedo; //材质反照率
+	float3 gFresnelR0; //RF(0)值，即材质的反射属性
+	float gRoughness; //材质的粗糙度
+	float4x4 gMatTransform; //UV动画变换矩阵
+	uint gDiffuseMapIndex; //纹理数组索引
+	uint gMatPad0;
+	uint gMatPad1;
+	uint gMatPad2;
+};
+StructuredBuffer<MaterialData> gMaterialData : register(t0, space1);
+#else
+struct cbMaterial
+{
+    float4 gDiffuseAlbedo; // 漫反射反照率
+    float3 gFresnelR0; // 材质属性RF(0°),影响镜面反射
+    float gRoughness;
+    float4x4 gMatTransform;
+};
+ConstantBuffer<cbMaterial> gMatCBPass : register(b2);
+#endif
 
+#ifdef DYNAMIC_RESOURCES
+	Texture2D gDiffuseMap[6] : register(t0); // 纹理
+#else
+	Texture2D gDiffuseMap : register(t0);
+#endif
 
 SamplerState gsamPointWrap        : register(s0); // 采样器
 SamplerState gsamPointClamp       : register(s1);
@@ -55,6 +68,12 @@ struct cbPerObject // 通过根签名将常量缓冲区与寄存器槽绑定
 {
 	float4x4 gWorld;
 	float4x4 gTexTransform; // UV需要乘这个矩阵
+#ifdef DYNAMIC_RESOURCES
+	uint gMaterialDataIndex;
+	uint gObjPad0;
+	uint gObjPad1;
+	uint gObjPad2;
+#endif
 };
 ConstantBuffer<cbPerObject> gCBPerObject : register(b0);
 
@@ -84,14 +103,6 @@ struct cbPass {
 	float2 cbPerObjectPad3;
 };
 ConstantBuffer<cbPass> gCBPass : register(b1);
-
-struct cbMaterial {
-	float4 gDiffuseAlbedo; // 漫反射反照率
-	float3 gFresnelR0; // 材质属性RF(0°),影响镜面反射
-	float gRoughness;
-	float4x4 gMatTransform;
-};
-ConstantBuffer<cbMaterial> gMatCBPass : register(b2);
 
 
 
@@ -127,25 +138,52 @@ VertexOut VS(VertexIn vin) {
 	vout.PosH = mul(posW, gCBPass.gViewProj);
 	vout.PosW = posW.xyz;
 	vout.NormalW = mul(vin.NormalL, gCBPerObject.gWorld).xyz;
+#ifdef DYNAMIC_RESOURCES
+	MaterialData matData = gMaterialData[gCBPerObject.gMaterialDataIndex];
+	float4 UV = mul(float4(vin.UV0, 0.0f, 1.0f), matData.gMatTransform);
+	vout.UV0 = mul(UV, matData.gMatTransform).xy;
+#else
 	float4 UV = mul(float4(vin.UV0, 0.0f, 1.0f), gMatCBPass.gMatTransform);
 	vout.UV0 = mul(UV, gMatCBPass.gMatTransform).xy;
+#endif
 	return vout;
 }
 
-// 在光栅化期间(为三角形计算像素颜色)对顶点着色器(或几何着色器)输出的顶点属性进行差值
-// 随后,再将这些差值数据传至像素着色器中作为它的输入
-// SV_Target: 返回值的类型应当与渲染目标格式相匹配(该输出值会被存于渲染目标之中)
+#ifdef DYNAMIC_RESOURCES
+float4 PS(VertexOut pin) : SV_Target
+{ 
+    //获取材质数据(需要点出来，和CB使用不太一样)
+    MaterialData matData = gMaterialData[gCBPerObject.gMaterialDataIndex];
+    float4 diffuseAlbedo = matData.gDiffuseAlbedo;
+    float3 fresnelR0 = matData.gFresnelR0;
+    float roughness = matData.gRoughness;
+    uint diffuseTexIndex = matData.gDiffuseMapIndex;
+
+    //在数组中动态地查找纹理
+    diffuseAlbedo *= gDiffuseMap[diffuseTexIndex].Sample(gsamAnisotropicWrap, pin.UV);
+    
+    float3 worldNormal = normalize(pin.WorldNormal);
+    float3 worldView = normalize(gEyePosW - pin.WorldPos);
+    
+    Material mat = { diffuseAlbedo, fresnelR0, roughness };
+    float3 shadowFactor = 1.0f;//暂时使用1.0，不对计算产生影响
+    float4 directLight = ComputerLighting(gLights, mat, pin.WorldPos, worldNormal, worldView, shadowFactor);
+    float4 ambient = gAmbientLight * diffuseAlbedo;
+    float4 diffuse = directLight * diffuseAlbedo;
+    float4 finalCol = ambient + diffuse;
+    finalCol.a = diffuseAlbedo.a;
+
+    return finalCol;
+}
+#else
 float4 PS(VertexOut pin) : SV_Target
 {
 	float4 diffuseAlbedo = gDiffuseMap.Sample(gsamAnisotropicWrap, pin.UV0) * gMatCBPass.gDiffuseAlbedo;
 	
 #ifdef ALPHA_TEST
-	// Discard pixel if texture alpha < 0.1.  We do this test as soon 
-	// as possible in the shader so that we can potentially exit the
-	// shader early, thereby skipping the rest of the shader code.
 	clip(diffuseAlbedo.a - 0.1f);
 #endif
-
+	
     // Interpolating normal can unnormalize it, so renormalize it.
     pin.NormalW = normalize(pin.NormalW);
 
@@ -175,3 +213,4 @@ float4 PS(VertexOut pin) : SV_Target
 
     return litColor;
 }
+#endif

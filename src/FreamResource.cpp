@@ -7,7 +7,11 @@ FrameResource::FrameResource(ID3D12Device *device, UINT passCount, UINT objectCo
 
     PassCB = std::make_unique<UploadBuffer<PassConstants>>(device, passCount, true);
 	ObjectCB = std::make_unique<UploadBuffer<ObjectConstants>>(device, objectCount, true);
-	MaterialCB = std::make_unique<UploadBuffer<MaterialConstants>>(device, materialCount, true);
+#ifdef DYNAMIC_RESOURCES
+	MaterialBuffer = std::make_unique<UploadBuffer<MaterialData>>(device, materialCount, false);
+#else
+	MaterialBuffer = std::make_unique<UploadBuffer<MaterialConstants>>(device, materialCount, true);
+#endif
 }
 
 FrameResource::FrameResource(ID3D12Device *device, UINT passCount, UINT objectCount, UINT materialCount, UINT waveVertCount) {
@@ -17,7 +21,11 @@ FrameResource::FrameResource(ID3D12Device *device, UINT passCount, UINT objectCo
 
 	PassCB = std::make_unique<UploadBuffer<PassConstants>>(device, passCount, true);
 	ObjectCB = std::make_unique<UploadBuffer<ObjectConstants>>(device, objectCount, true);
-	MaterialCB = std::make_unique<UploadBuffer<MaterialConstants>>(device, materialCount, true);
+	#ifdef DYNAMIC_RESOURCES
+	MaterialBuffer = std::make_unique<UploadBuffer<MaterialData>>(device, materialCount, false);
+	#else
+	MaterialBuffer = std::make_unique<UploadBuffer<MaterialConstants>>(device, materialCount, true);
+	#endif
 	WavesVB = std::make_unique<UploadBuffer<Vertex>>(device, waveVertCount, false);
 }
 
