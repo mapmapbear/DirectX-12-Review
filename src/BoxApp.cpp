@@ -184,41 +184,33 @@ void BoxApp::UpdateObjectCBs(const GameTimer &gt) {
 
 #else
 void BoxApp::UpdateInstanceData(const GameTimer &gt) {
-	DirectX::XMMATRIX view = mCamera.GetView();
-	DirectX::XMMATRIX invView = DirectX::XMMatrixInverse(get_rvalue_ptr(XMMatrixDeterminant(view)), view);
-
 	auto currInstanceBuffer = mCurrFrameResources->InstanceBuffer.get();
 	for (auto &e : mAllRitems) {
-		const auto &instanceData = e->Instances;
-		if (e->NumFramesDirty > 0) //帧资源数量判定
-		{
+		if (e->NumFramesDirty > 0) {
+			const auto &instanceData = e->Instances;
 			int visibleInstanceCount = 0;
-
 			for (UINT i = 0; i < (UINT)instanceData.size(); ++i) {
-				DirectX::XMMATRIX world = DirectX::XMLoadFloat4x4(&instanceData[i].World);
-				DirectX::XMMATRIX texTransform = DirectX::XMLoadFloat4x4(&instanceData[i].TexTransform);
+				InstanceData data; //每个实例的数据
+				XMFLOAT4X4 world = instanceData[i].World;
+				XMMATRIX w = XMLoadFloat4x4(&world);
+				XMStoreFloat4x4(&data.World, XMMatrixTranspose(w));
 
-				DirectX::XMMATRIX invWorld = DirectX::XMMatrixInverse(get_rvalue_ptr(XMMatrixDeterminant(world)), world);
-				DirectX::XMMATRIX viewToLocal = DirectX::XMMatrixMultiply(invView, invWorld);
-				InstanceData data;
-				XMStoreFloat4x4(&data.World, XMMatrixTranspose(world));
-				XMStoreFloat4x4(&data.TexTransform, XMMatrixTranspose(texTransform));
+				XMFLOAT4X4 texTransform = instanceData[i].TexTransform;
+				XMMATRIX texTransMatrix = XMLoadFloat4x4(&texTransform);
+				XMStoreFloat4x4(&data.TexTransform, XMMatrixTranspose(texTransMatrix));
 				data.MaterialIndex = instanceData[i].MaterialIndex;
-
-				// Write the instance data to structured buffer for the visible objects.
-				currInstanceBuffer->CopyData(visibleInstanceCount++, data);
+				currInstanceBuffer->CopyData(visibleInstanceCount, data);
+				visibleInstanceCount ++;
 			}
-
 			e->InstanceCount = visibleInstanceCount;
 			e->NumFramesDirty--;
 		}
 		
-
-// 		std::wostringstream outs;
-// 		outs.precision(6);
-// 		outs << L"Instancing and Culling Demo" << L"    " << e->InstanceCount << L" objects visible out of " << e->Instances.size();
-// 		mMainWndCaption = outs.str();
 	}
+	// std::wostringstream outs;
+	// outs.precision(6);
+	// outs << L"Instancing and Culling Demo" << L"    " << e->InstanceCount << L" objects visible out of " << e->Instances.size();
+	// mMainWndCaption = outs.str();
 }
 
 #endif
