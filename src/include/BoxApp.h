@@ -29,9 +29,10 @@ struct RenderItem
 	Material *Mat = nullptr;
 
 	D3D12_PRIMITIVE_TOPOLOGY PrimitiveType = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
-
+	std::vector<InstanceData> Instances;
 	UINT IndexCount = 0;
 	UINT StartIndexLocation = 0;
+	UINT InstanceCount = 0;
 	int BaseVertexLocation = 0;
 };
 
@@ -61,7 +62,8 @@ private:
 	virtual void Update(const GameTimer& gt) override;
 	void UpdateImGui(const GameTimer &gt, PassConstants& buffer);
 	void UpdateObjectCBs(const GameTimer& gt);
-	void UpdateMainPassCB(const GameTimer& gt);
+	void UpdateInstanceData(const GameTimer &gt);
+	void UpdateMainPassCB(const GameTimer &gt);
 	void UpdateReflectedPassCB(const GameTimer &gt);
 	void UpdateCamera(const GameTimer& gt);
 	void UpdateWaves(const GameTimer &gt);
@@ -90,6 +92,7 @@ private:
 	void BuildSkullGeometry();
 	void BuildTreeSpritesGeometry();
 	void BuildRenderItems();
+	void BuildInstanceRenderItems();
 	float GetHillsHeight(float x, float z) const;
 	void BuildWavesGeometryBuffers();
 	void BuildMaterials();
@@ -155,6 +158,8 @@ private:
 
 	std::unique_ptr<Waves> mWaves;
 	RenderItem *mWavesRitem = nullptr;
+
+	UINT mInstanceCount = 0;
 
 	// float mTheta = 1.5f*XM_PI;
 	// float mPhi = XM_PIDIV4;

@@ -19,6 +19,17 @@ struct ObjectConstants
 #endif
 };
 
+#ifdef INSTANCE_RENDER
+struct InstanceData {
+	DirectX::XMFLOAT4X4 World = MathHelper::Identity4x4();
+	DirectX::XMFLOAT4X4 TexTransform = MathHelper::Identity4x4();
+	UINT MaterialIndex;
+	UINT InstancePad0;
+	UINT InstancePad1;
+	UINT InstancePad2;
+};
+#endif
+
 struct PassConstants
 {
 	DirectX::XMFLOAT4X4 View = MathHelper::Identity4x4();
@@ -90,16 +101,19 @@ public:
 	// So each frame needs their own allocator.
 	Microsoft::WRL::ComPtr<ID3D12CommandAllocator> CmdListAlloc;
 
-		// We cannot update a cbuffer until the GPU is done processing the commands
-		// that reference it.  So each frame needs their own cbuffers.
-		std::unique_ptr<UploadBuffer<PassConstants>> PassCB = nullptr;
+	std::unique_ptr<UploadBuffer<PassConstants>> PassCB = nullptr;
+#ifdef INSTANCE_RENDER
+		std::unique_ptr<UploadBuffer<InstanceData>> InstanceBuffer = nullptr;
+#else
 		std::unique_ptr<UploadBuffer<ObjectConstants>> ObjectCB = nullptr;
+#endif
 	#ifdef DYNAMIC_RESOURCES
 		std::unique_ptr<UploadBuffer<MaterialData>> MaterialBuffer = nullptr;
 	#else
 		std::unique_ptr<UploadBuffer<MaterialConstants>> MaterialBuffer = nullptr;	
 	#endif
 		std::unique_ptr<UploadBuffer<Vertex>> WavesVB = nullptr;
+
 
 		// Fence value to mark commands up to this fence point.  This lets us
 		// check if these frame resources are still in use by the GPU.

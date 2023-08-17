@@ -61,7 +61,11 @@ bool BoxApp::Initialize() {
 	BuildSkullGeometry();
 	BuildTreeSpritesGeometry();
 	BuildMaterials();
+#ifdef INSTANCE_RENDER
+	BuildInstanceRenderItems();
+#else
 	BuildRenderItems();
+#endif
 	BuildFrameResources();
 	BuildDescriptorHeaps();
 	BuildConstantBufferViews();
@@ -103,11 +107,15 @@ void BoxApp::Update(const GameTimer &gt) {
 	UpdateImGui(gt, mMainPassCB);
 #endif
 	AnimateMaterial(gt);
+#ifndef INSTANCE_RENDER
 	UpdateObjectCBs(gt);
+	UpdateWaves(gt);
+#else
+	UpdateInstanceData(gt);
+#endif
 	UpdateMainPassCB(gt);
 	UpdateReflectedPassCB(gt);
 	UpdateMaterialCBs(gt);
-	UpdateWaves(gt);
 }
 
 #ifndef __IMGUI
@@ -153,6 +161,8 @@ void BoxApp::UpdateImGui(const GameTimer &gt, PassConstants &buffer) {
 	buffer.color = XMFLOAT4(gColor[0], gColor[1], gColor[2], 1.0);
 }
 #endif
+
+#ifndef INSTANCE_RENDER
 void BoxApp::UpdateObjectCBs(const GameTimer &gt) {
 	auto currObjectCB = mCurrFrameResources->ObjectCB.get();
 	for (auto &e : mAllRitems) {
@@ -163,14 +173,55 @@ void BoxApp::UpdateObjectCBs(const GameTimer &gt) {
 			ObjectConstants objConstants;
 			XMStoreFloat4x4(&objConstants.World, XMMatrixTranspose(world));
 			XMStoreFloat4x4(&objConstants.TexTransform, XMMatrixTranspose(texTransform));
-			#ifdef DYNAMIC_RESOURCES
+#ifdef DYNAMIC_RESOURCES
 			objConstants.materialIndex = e->Mat->MatCBIndex;
-			#endif
+#endif
 			currObjectCB->CopyData(e->ObjCBIndex, objConstants);
 			e->NumFramesDirty--;
 		}
 	}
 }
+
+#else
+void BoxApp::UpdateInstanceData(const GameTimer &gt) {
+	DirectX::XMMATRIX view = mCamera.GetView();
+	DirectX::XMMATRIX invView = DirectX::XMMatrixInverse(get_rvalue_ptr(XMMatrixDeterminant(view)), view);
+
+	auto currInstanceBuffer = mCurrFrameResources->InstanceBuffer.get();
+	for (auto &e : mAllRitems) {
+		const auto &instanceData = e->Instances;
+		if (e->NumFramesDirty > 0) //帧资源数量判定
+		{
+			int visibleInstanceCount = 0;
+
+			for (UINT i = 0; i < (UINT)instanceData.size(); ++i) {
+				DirectX::XMMATRIX world = DirectX::XMLoadFloat4x4(&instanceData[i].World);
+				DirectX::XMMATRIX texTransform = DirectX::XMLoadFloat4x4(&instanceData[i].TexTransform);
+
+				DirectX::XMMATRIX invWorld = DirectX::XMMatrixInverse(get_rvalue_ptr(XMMatrixDeterminant(world)), world);
+				DirectX::XMMATRIX viewToLocal = DirectX::XMMatrixMultiply(invView, invWorld);
+				InstanceData data;
+				XMStoreFloat4x4(&data.World, XMMatrixTranspose(world));
+				XMStoreFloat4x4(&data.TexTransform, XMMatrixTranspose(texTransform));
+				data.MaterialIndex = instanceData[i].MaterialIndex;
+
+				// Write the instance data to structured buffer for the visible objects.
+				currInstanceBuffer->CopyData(visibleInstanceCount++, data);
+			}
+
+			e->InstanceCount = visibleInstanceCount;
+			e->NumFramesDirty--;
+		}
+		
+
+// 		std::wostringstream outs;
+// 		outs.precision(6);
+// 		outs << L"Instancing and Culling Demo" << L"    " << e->InstanceCount << L" objects visible out of " << e->Instances.size();
+// 		mMainWndCaption = outs.str();
+	}
+}
+
+#endif
 
 void BoxApp::UpdateMainPassCB(const GameTimer &gt) {
 	XMMATRIX view = mCamera.GetView();
@@ -450,16 +501,16 @@ void BoxApp::Draw(const GameTimer &gt) {
 
 	auto matSB = mCurrFrameResources->MaterialBuffer->Resource();
 	mCommandList->SetGraphicsRootShaderResourceView(2, //根参数索引
-			matSB->GetGPUVirtualAddress()); //子资源地址  
+			matSB->GetGPUVirtualAddress()); //子资源地址 
 #endif
 	auto passCB = mCurrFrameResources->PassCB->Resource();
 	mCommandList->SetGraphicsRootConstantBufferView(3, passCB->GetGPUVirtualAddress());
-
+	HRESULT hr = md3dDevice->GetDeviceRemovedReason();
+	ThrowIfFailed(hr);
 	DrawRenderItems(mCommandList.Get(), mRitemLayer[static_cast<int>(RenderLayer::Opaque)]);
-
 	// Draw AlphaTest Render Queue
-	mCommandList->SetPipelineState(mPSOs["alphaTested"].Get());
-	DrawRenderItems(mCommandList.Get(), mRitemLayer[static_cast<int>(RenderLayer::AlphaTest)]);
+// 	mCommandList->SetPipelineState(mPSOs["alphaTested"].Get());
+// 	DrawRenderItems(mCommandList.Get(), mRitemLayer[static_cast<int>(RenderLayer::AlphaTest)]);
 
 	// mCommandList->OMSetStencilRef(1);
 	// mCommandList->SetPipelineState(mPSOs["markStencilMirrors"].Get());
@@ -508,6 +559,7 @@ void BoxApp::Draw(const GameTimer &gt) {
 
 	ID3D12CommandList *cmdsLists[] = { mCommandList.Get() };
 	mCommandQueue->ExecuteCommandLists(_countof(cmdsLists), cmdsLists);
+
 	ThrowIfFailed(mSwapChain->Present(0, 0));
 
 	mCurrBackBuffer = (mCurrBackBuffer + 1) % SwapChainBufferCount;
@@ -522,7 +574,11 @@ void BoxApp::Draw(const GameTimer &gt) {
 void BoxApp::DrawRenderItems(ID3D12GraphicsCommandList *cmdList, const std::vector<RenderItem *> &ritems) {
 	UINT objCBByteSize = d3dUtil::CalcConstantBufferByteSize(sizeof(ObjectConstants));
 	UINT matCBByteSize = d3dUtil::CalcConstantBufferByteSize(sizeof(MaterialConstants));
+#ifdef INSTANCE_RENDER
+	auto instanceBuffer = mCurrFrameResources->InstanceBuffer->Resource();
+#else
 	auto objectCB = mCurrFrameResources->ObjectCB->Resource();
+#endif
 	auto materialCB = mCurrFrameResources->MaterialBuffer->Resource();
 #ifdef DYNAMIC_RESOURCES
 	for (size_t i = 0; i < ritems.size(); ++i) {
@@ -532,14 +588,16 @@ void BoxApp::DrawRenderItems(ID3D12GraphicsCommandList *cmdList, const std::vect
 		cmdList->IASetIndexBuffer(get_rvalue_ptr(ri->Geo->IndexBufferView()));
 		cmdList->IASetPrimitiveTopology(ri->PrimitiveType);
 
+		#ifndef INSTANCE_RENDER
 		D3D12_GPU_VIRTUAL_ADDRESS objCBAddress = objectCB->GetGPUVirtualAddress() + ri->ObjCBIndex * objCBByteSize;
-
-		// CD3DX12_GPU_DESCRIPTOR_HANDLE tex(mSrvDescriptorHeap->GetGPUDescriptorHandleForHeapStart());
-		// tex.Offset(ri->Mat->DiffuseSrvHeapIndex, mCbvSrvDescriptorSize);
-
+		#endif
+#ifdef INSTANCE_RENDER
+		cmdList->SetGraphicsRootShaderResourceView(1, instanceBuffer->GetGPUVirtualAddress());
+		cmdList->DrawIndexedInstanced(ri->IndexCount, ri->InstanceCount, ri->StartIndexLocation, ri->BaseVertexLocation, 0);
+#else
 		cmdList->SetGraphicsRootConstantBufferView(1, objCBAddress);
-
 		cmdList->DrawIndexedInstanced(ri->IndexCount, 1, ri->StartIndexLocation, ri->BaseVertexLocation, 0);
+#endif
 	}
 #else
 	for (size_t i = 0; i < ritems.size(); ++i) {
@@ -568,7 +626,6 @@ void BoxApp::DrawRenderItems(ID3D12GraphicsCommandList *cmdList, const std::vect
 		cmdList->DrawIndexedInstanced(ri->IndexCount, 1, ri->StartIndexLocation, ri->BaseVertexLocation, 0);
 	}
 #endif
-	
 }
 
 void BoxApp::OnMouseDown(WPARAM btnState, int x, int y) {
@@ -581,36 +638,6 @@ void BoxApp::OnMouseDown(WPARAM btnState, int x, int y) {
 void BoxApp::OnMouseUp(WPARAM btnState, int x, int y) {
 	ReleaseCapture();
 }
-
-// void BoxApp::OnMouseMove(WPARAM btnState, int x, int y) {
-// 	if ((btnState & MK_LBUTTON) != 0) {
-// 		// Make each pixel correspond to a quarter of a degree.
-// 		float dx = XMConvertToRadians(0.25f * static_cast<float>(x - mLastMousePos.x));
-// 		float dy = XMConvertToRadians(0.25f * static_cast<float>(y - mLastMousePos.y));
-//
-// 		// Update angles based on input to orbit camera around box.
-// 		mTheta += -dx; // 觉得原来的别扭,这里我换了方向
-// 		mPhi += -dy;
-//
-// 		// Restrict the angle mPhi.
-// 		mPhi = MathHelper::Clamp(mPhi, 0.1f, MathHelper::Pi - 0.1f);
-// 	}
-// 	if ((btnState & MK_RBUTTON) != 0) // 原来是 else if, 不顺畅
-// 	{
-// 		// Make each pixel correspond to 0.005 unit in the scene.
-// 		float dx = 0.005f * static_cast<float>(x - mLastMousePos.x);
-// 		float dy = 0.005f * static_cast<float>(y - mLastMousePos.y);
-//
-// 		// Update the camera radius based on input.
-// 		mRadius += -(dx - dy); // 我换了方向
-//
-// 		// Restrict the radius.
-// 		mRadius = MathHelper::Clamp(mRadius, 3.0f, 15.0f);
-// 	}
-//
-// 	mLastMousePos.x = x;
-// 	mLastMousePos.y = y;
-// }
 
 void BoxApp::BuildDescriptorHeaps() {
 	UINT objCount = 0;
@@ -717,6 +744,7 @@ void BoxApp::BuildConstantBufferViews() {
 	// objCount += 1;
 	// UINT objCount = (UINT)(mRitemLayer[(int)RenderLayer::Opaque].size() + mRitemLayer[(int)RenderLayer::Transparent].size() + mRitemLayer[(int)RenderLayer::AlphaTest].size());
 
+#ifndef INSTANCE_RENDER
 	// 每个帧资源中的每一个物体都需要一个对应的CBV描述符
 	for (int frameIndex = 0; frameIndex < gNumFrameResources; ++frameIndex) {
 		auto objectCB = mFrameResources[frameIndex]->ObjectCB->Resource();
@@ -739,6 +767,7 @@ void BoxApp::BuildConstantBufferViews() {
 			md3dDevice->CreateConstantBufferView(&cbvDesc, handle);
 		}
 	}
+#endif // !INSTANCE_RENDER
 
 #ifndef DYNAMIC_RESOURCES
 	for (int frameIndex = 0; frameIndex < gNumFrameResources; ++frameIndex) {
@@ -764,8 +793,6 @@ void BoxApp::BuildConstantBufferViews() {
 		}
 	}
 #endif // !DYNAMIC_RESOURCES
-
-	
 
 	UINT passCBByteSize = d3dUtil::CalcConstantBufferByteSize(sizeof(PassConstants));
 
@@ -887,9 +914,15 @@ void BoxApp::BuildRootSignature() {
 	
 	CD3DX12_ROOT_PARAMETER slotRootParameter[4];
 	slotRootParameter[0].InitAsDescriptorTable(1, &srvTable, D3D12_SHADER_VISIBILITY_PIXEL);
+#ifdef INSTANCE_RENDER
+	slotRootParameter[1].InitAsShaderResourceView(0, 1);
+	slotRootParameter[2].InitAsShaderResourceView(1, 1);
+	slotRootParameter[3].InitAsConstantBufferView(0);
+#else
 	slotRootParameter[1].InitAsConstantBufferView(0);
 	slotRootParameter[2].InitAsShaderResourceView(0, 1);
 	slotRootParameter[3].InitAsConstantBufferView(1);
+#endif
 #else
 	CD3DX12_DESCRIPTOR_RANGE texTable;
 	texTable.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0); // register t0
@@ -1008,10 +1041,24 @@ void BoxApp::BuildShadersAndInputLayout() {
 		nullptr, nullptr
 	};
 
+	const D3D_SHADER_MACRO dynamicResourcesInstanceDefines[] = {
+		"FOG", "1",
+		"ALPHA_TEST", "1",
+		"DYNAMIC_RESOURCES", "1",
+		"INSTANCE_RENDER", "1",
+		nullptr, nullptr
+	};
+
 #ifdef DYNAMIC_RESOURCES
+	#ifdef INSTANCE_RENDER
+	mShaders["standardVS"] = d3dUtil::CompileShader(L"../../Shaders\\color.hlsl", dynamicResourcesInstanceDefines, "VS", "vs_5_1");
+	mShaders["opaquePS"] = d3dUtil::CompileShader(L"../../Shaders\\color.hlsl", dynamicResourcesInstanceDefines, "PS", "ps_5_1");
+	mShaders["alphaTestedPS"] = d3dUtil::CompileShader(L"../../Shaders\\color.hlsl", dynamicResourcesInstanceDefines, "PS", "ps_5_1");
+	#else 
 	mShaders["standardVS"] = d3dUtil::CompileShader(L"../../Shaders\\color.hlsl", dynamicResourcesDefines, "VS", "vs_5_1");
 	mShaders["opaquePS"] = d3dUtil::CompileShader(L"../../Shaders\\color.hlsl", dynamicResourcesDefines, "PS", "ps_5_1");
 	mShaders["alphaTestedPS"] = d3dUtil::CompileShader(L"../../Shaders\\color.hlsl", dynamicResourcesDefines, "PS", "ps_5_1");
+	#endif
 #else
 	mShaders["standardVS"] = d3dUtil::CompileShader(L"../../Shaders\\color.hlsl", nullptr, "VS", "vs_5_1");
 	mShaders["opaquePS"] = d3dUtil::CompileShader(L"../../Shaders\\color.hlsl", defines, "PS", "ps_5_1");
@@ -1592,6 +1639,7 @@ void BoxApp::BuildTreeSpritesGeometry() {
 	mGeometries["treeSpritesGeo"] = std::move(geo);
 }
 
+#ifndef INSTANCE_RENDER
 void BoxApp::BuildRenderItems() {
 	// 将每一个物体都存到 mAllRitems, mOpaqueRitems 中,相同物体的顶点/索引偏移相同,但是它们的世界矩阵不同,ObjIndex++.
 	// 渲染对象中存储了 World, ObjCBIndex, Geo, PrimitiveType, IndexCount, StartIndexLocation, BaseVertexLocation
@@ -1810,6 +1858,62 @@ void BoxApp::BuildRenderItems() {
 	mRitemLayer[static_cast<int>(RenderLayer::AlphaTestedTreeSprites)].push_back(treeSpritesRitem.get());
 	mAllRitems.push_back(std::move(treeSpritesRitem));
 }
+
+#endif
+
+#ifdef INSTANCE_RENDER
+void BoxApp::BuildInstanceRenderItems() {
+	auto skullRitem = std::make_unique<RenderItem>();
+	skullRitem->World = MathHelper::Identity4x4();
+	skullRitem->TexTransform = MathHelper::Identity4x4();
+	skullRitem->ObjCBIndex = 0;
+	skullRitem->Mat = mMaterials["grass"].get();
+	skullRitem->Geo = mGeometries["skullGeo"].get();
+	skullRitem->PrimitiveType = D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
+	skullRitem->InstanceCount = 0;
+	skullRitem->IndexCount = skullRitem->Geo->DrawArgs["skull"].IndexCount;
+	skullRitem->StartIndexLocation = skullRitem->Geo->DrawArgs["skull"].StartIndexLocation;
+	skullRitem->BaseVertexLocation = skullRitem->Geo->DrawArgs["skull"].BaseVertexLocation;
+
+	// Generate instance data.
+	const int n = 5;
+	mInstanceCount = n * n * n;
+	skullRitem->Instances.resize(mInstanceCount);
+
+	float width = 200.0f;
+	float height = 200.0f;
+	float depth = 200.0f;
+
+	float x = -0.5f * width;
+	float y = -0.5f * height;
+	float z = -0.5f * depth;
+	float dx = width / (n - 1);
+	float dy = height / (n - 1);
+	float dz = depth / (n - 1);
+	for (int k = 0; k < n; ++k) {
+		for (int i = 0; i < n; ++i) {
+			for (int j = 0; j < n; ++j) {
+				int index = k * n * n + i * n + j;
+				// Position instanced along a 3D grid.
+				skullRitem->Instances[index].World = XMFLOAT4X4(
+						1.0f, 0.0f, 0.0f, 0.0f,
+						0.0f, 1.0f, 0.0f, 0.0f,
+						0.0f, 0.0f, 1.0f, 0.0f,
+						x + j * dx, y + i * dy, z + k * dz, 1.0f);
+
+				XMStoreFloat4x4(&skullRitem->Instances[index].TexTransform, XMMatrixScaling(2.0f, 2.0f, 1.0f));
+				skullRitem->Instances[index].MaterialIndex = index % mMaterials.size();
+			}
+		}
+	}
+
+	mAllRitems.push_back(std::move(skullRitem));
+
+	// All the render items are opaque.
+	for (auto &e : mAllRitems)
+		mRitemLayer[static_cast<int>(RenderLayer::Opaque)].push_back(e.get());
+}
+#endif
 
 float BoxApp::GetHillsHeight(float x, float z) const {
 	return 0.3f * (z * sinf(0.1f * x) + x * cosf(0.1f * z));

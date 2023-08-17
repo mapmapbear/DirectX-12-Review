@@ -38,7 +38,7 @@ struct MaterialData {
 	uint gMatPad1;
 	uint gMatPad2;
 };
-StructuredBuffer<MaterialData> gMaterialData : register(t0, space1);
+StructuredBuffer<MaterialData> gMaterialData : register(t1, space1);
 #else
 struct cbMaterial
 {
@@ -50,10 +50,23 @@ struct cbMaterial
 ConstantBuffer<cbMaterial> gMatCBPass : register(b2);
 #endif
 
-#ifdef DYNAMIC_RESOURCES
-	Texture2D gDiffuseMap[6] : register(t0); // 纹理
-#else
+#ifdef INSTANCE_RENDER
+struct InstanceData
+{
+	float4x4 World;
+	float4x4 TexTransform;
+	uint     MaterialIndex;
+	uint     InstPad0;
+	uint     InstPad1;
+	uint     InstPad2;
+};
+StructuredBuffer<InstanceData> gInstanceData : register(t0, space1);
+#endif
+
+#ifndef DYNAMIC_RESOURCES
 	Texture2D gDiffuseMap : register(t0);
+#else
+	Texture2D gDiffuseMap[6] : register(t0); // 纹理	
 #endif
 
 SamplerState gsamPointWrap        : register(s0); // 采样器
@@ -64,6 +77,7 @@ SamplerState gsamAnisotropicWrap  : register(s4);
 SamplerState gsamAnisotropicClamp : register(s5);
 
 
+#ifndef INSTANCE_RENDER
 struct cbPerObject // 通过根签名将常量缓冲区与寄存器槽绑定
 {
 	float4x4 gWorld;
@@ -76,6 +90,7 @@ struct cbPerObject // 通过根签名将常量缓冲区与寄存器槽绑定
 #endif
 };
 ConstantBuffer<cbPerObject> gCBPerObject : register(b0);
+#endif
 
 struct cbPass {
 	float4x4 gView;
@@ -102,7 +117,11 @@ struct cbPass {
 	float gFogStart;
 	float2 cbPerObjectPad3;
 };
+#ifdef INSTANCE_RENDER
+ConstantBuffer<cbPass> gCBPass : register(b0);
+#else
 ConstantBuffer<cbPass> gCBPass : register(b1);
+#endif
 
 
 
@@ -128,22 +147,42 @@ struct VertexOut {
 	float3 PosW : POSITION;
 	float3 NormalW : NORMAL;
 	float2 UV0 : TEXCOORD;
+#ifdef INSTANCE_RENDER
+	nointerpolation uint MatIndex  : MATINDEX;
+#endif
 };
-
+#ifdef INSTANCE_RENDER
+VertexOut VS(VertexIn vin, uint instanceID : SV_InstanceID) {
+#else
 VertexOut VS(VertexIn vin) {
+#endif
 	VertexOut vout;
 	
-	float4 posW = mul(float4(vin.PosL, 1.0f), gCBPerObject.gWorld);
+#ifdef INSTANCE_RENDER
+	InstanceData instData = gInstanceData[instanceID];
+	float4x4 world = instData.World;
+	float4x4 texTransform = instData.TexTransform;
+	uint matIndex = instData.MaterialIndex;
+	vout.MatIndex = matIndex;
+#else
+    float4x4 world = gCBPerObject.gWorld;
+    float4x4 texTransform = gCBPerObject.gTexTransform;
+#endif
+    float4 posW = mul(float4(vin.PosL, 1.0f), world);
 	// 转换到齐次裁剪空间
 	vout.PosH = mul(posW, gCBPass.gViewProj);
 	vout.PosW = posW.xyz;
-	vout.NormalW = mul(vin.NormalL, gCBPerObject.gWorld).xyz;
+	vout.NormalW = mul(vin.NormalL, world).xyz;
 #ifdef DYNAMIC_RESOURCES
+	#ifndef INSTANCE_RENDER
 	MaterialData matData = gMaterialData[gCBPerObject.gMaterialDataIndex];
-	float4 UV = mul(float4(vin.UV0, 0.0f, 1.0f), matData.gMatTransform);
+#else
+	MaterialData matData = gMaterialData[matIndex];
+#endif
+	float4 UV = mul(float4(vin.UV0, 0.0f, 1.0f), texTransform);
 	vout.UV0 = mul(UV, matData.gMatTransform).xy;
 #else
-	float4 UV = mul(float4(vin.UV0, 0.0f, 1.0f), gMatCBPass.gMatTransform);
+    float4 UV = mul(float4(vin.UV0, 0.0f, 1.0f), texTransform);
 	vout.UV0 = mul(UV, gMatCBPass.gMatTransform).xy;
 #endif
 	return vout;
@@ -153,7 +192,11 @@ VertexOut VS(VertexIn vin) {
 float4 PS(VertexOut pin) : SV_Target
 { 
     //获取材质数据(需要点出来，和CB使用不太一样)
-    MaterialData matData = gMaterialData[gCBPerObject.gMaterialDataIndex];
+#ifdef INSTANCE_RENDER
+	MaterialData matData = gMaterialData[pin.MatIndex];
+#else
+	MaterialData matData = gMaterialData[gCBPerObject.gMaterialDataIndex];
+#endif
     float4 diffuseAlbedo = matData.gDiffuseAlbedo;
     float3 fresnelR0 = matData.gFresnelR0;
     float roughness = matData.gRoughness;

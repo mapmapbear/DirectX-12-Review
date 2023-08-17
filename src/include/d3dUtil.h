@@ -30,6 +30,7 @@
 #include "MathHelper.h"
 
 #define DYNAMIC_RESOURCES
+#define INSTANCE_RENDER
 
 extern const int gNumFrameResources;
 inline void d3dSetDebugName(IDXGIObject* obj, const char* name)
