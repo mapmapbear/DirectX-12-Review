@@ -481,9 +481,9 @@ void BoxApp::Draw(const GameTimer &gt) {
 
 	mCommandList->OMSetRenderTargets(1, get_rvalue_ptr(CurrentBackBufferView()), true, get_rvalue_ptr(DepthStencilView()));
 
-	ID3D12DescriptorHeap *descriptorHeaps1[] = { mCbvHeap.Get() };
-	mCommandList->SetDescriptorHeaps(_countof(descriptorHeaps1), descriptorHeaps1);
-	mCommandList->SetGraphicsRootSignature(mRootSignature.Get());
+// 	ID3D12DescriptorHeap *descriptorHeaps1[] = { mCbvHeap.Get() };
+// 	mCommandList->SetDescriptorHeaps(_countof(descriptorHeaps1), descriptorHeaps1);
+// 	mCommandList->SetGraphicsRootSignature(mRootSignature.Get());
 
 #ifdef DYNAMIC_RESOURCES
 	ID3D12DescriptorHeap *descriptorHeaps[] = { mSrvHeap.Get() };
@@ -497,9 +497,12 @@ void BoxApp::Draw(const GameTimer &gt) {
 #endif
 	auto passCB = mCurrFrameResources->PassCB->Resource();
 	mCommandList->SetGraphicsRootConstantBufferView(3, passCB->GetGPUVirtualAddress());
-	HRESULT hr = md3dDevice->GetDeviceRemovedReason();
-	ThrowIfFailed(hr);
+
+	#ifdef INSTANCE_RENDER
+	DrawInstanceRenderItems(mCommandList.Get(), mRitemLayer[static_cast<int>(RenderLayer::Opaque)]);
+	#else
 	DrawRenderItems(mCommandList.Get(), mRitemLayer[static_cast<int>(RenderLayer::Opaque)]);
+	#endif
 	// Draw AlphaTest Render Queue
 // 	mCommandList->SetPipelineState(mPSOs["alphaTested"].Get());
 // 	DrawRenderItems(mCommandList.Get(), mRitemLayer[static_cast<int>(RenderLayer::AlphaTest)]);
@@ -620,6 +623,24 @@ void BoxApp::DrawRenderItems(ID3D12GraphicsCommandList *cmdList, const std::vect
 #endif
 }
 
+#ifdef INSTANCE_RENDER
+void BoxApp::DrawInstanceRenderItems(ID3D12GraphicsCommandList *cmdList, const std::vector<RenderItem *> &ritems) {
+	// For each render item...
+	for (size_t i = 0; i < ritems.size(); ++i) {
+		auto ri = ritems[i];
+
+		cmdList->IASetVertexBuffers(0, 1, get_rvalue_ptr(ri->Geo->VertexBufferView()));
+		cmdList->IASetIndexBuffer(get_rvalue_ptr(ri->Geo->IndexBufferView()));
+		cmdList->IASetPrimitiveTopology(ri->PrimitiveType);
+
+		auto instanceBuffer = mCurrFrameResources->InstanceBuffer->Resource();
+		mCommandList->SetGraphicsRootShaderResourceView(1, instanceBuffer->GetGPUVirtualAddress());
+
+		cmdList->DrawIndexedInstanced(ri->IndexCount, ri->InstanceCount, ri->StartIndexLocation, ri->BaseVertexLocation, 0);
+	}
+}
+
+#endif
 void BoxApp::OnMouseDown(WPARAM btnState, int x, int y) {
 	mLastMousePos.x = x;
 	mLastMousePos.y = y;
@@ -1266,7 +1287,11 @@ void BoxApp::BuildPSO() {
 
 void BoxApp::BuildFrameResources() {
 	for (int i = 0; i < gNumFrameResources; ++i) {
+		#ifdef INSTANCE_RENDER
+		mFrameResources.push_back(std::make_unique<FrameResource>(md3dDevice.Get(), 1, mInstanceCount, (UINT)mMaterials.size(), mWaves->VertexCount()));
+		#else
 		mFrameResources.push_back(std::make_unique<FrameResource>(md3dDevice.Get(), 2, static_cast<UINT>(mAllRitems.size()), mMaterials.size(), mWaves->VertexCount()));
+		#endif
 	}
 }
 
