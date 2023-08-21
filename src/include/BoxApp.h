@@ -27,6 +27,7 @@ struct RenderItem
 	// 此渲染项参与绘制的几何体,绘制一个几何体可能会用到多个渲染项
 	MeshGeometry* Geo = nullptr;
 	Material *Mat = nullptr;
+	BoundingBox Bounds;
 
 	D3D12_PRIMITIVE_TOPOLOGY PrimitiveType = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
 	std::vector<InstanceData> Instances;
@@ -95,6 +96,7 @@ private:
 	void BuildTreeSpritesGeometry();
 	void BuildRenderItems();
 	void BuildInstanceRenderItems();
+	void BuildSkyGeometry();
 	float GetHillsHeight(float x, float z) const;
 	void BuildWavesGeometryBuffers();
 	void BuildMaterials();
@@ -149,7 +151,6 @@ private:
 	XMFLOAT3 mEyePos = { 0.0f, 0.0f, 0.0f };
 
 	XMFLOAT3 mSkullTranslation = { 0.0f, 1.0f, -5.0f };
-
 	std::unordered_map<std::string, std::unique_ptr<MeshGeometry>> mGeometries;
 	std::unordered_map<std::string, std::unique_ptr<Material>> mMaterials;
 	std::unordered_map<std::string, ComPtr<ID3DBlob>> mShaders;
@@ -177,6 +178,8 @@ private:
 	int blurCount;
 
 	Camera mCamera;
+	BoundingFrustum mCamFrustum;
+	bool mFrustumCullingEnabled = true;
 
 	UINT posState;
 	UINT gColorState;

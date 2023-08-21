@@ -86,6 +86,7 @@ void BoxApp::OnResize() {
 	D3DApp::OnResize();
 
 	mCamera.SetLens(0.25f * MathHelper::Pi, AspectRatio(), 1.0f, 1000.0f);
+	BoundingFrustum::CreateFromMatrix(mCamFrustum, mCamera.GetProj());
 
 	if (mBlurFilter != nullptr) {
 		mBlurFilter->OnResize(mClientWidth, mClientHeight);
@@ -140,6 +141,7 @@ void BoxApp::UpdateImGui(const GameTimer &gt, PassConstants &buffer) {
 		}
 		ImGui::Checkbox("ScreenBlur", &this->needBlur);
 		ImGui::Checkbox("Geometry", &this->needBlur);
+		ImGui::Checkbox("Frustum Cull", &this->mFrustumCullingEnabled);
 		// ImGui::SameLine(0.0f, 25.0f);
 		ImGui::Text("BlurCount: %d", this->blurCount);
 		ImGui::SliderInt("##1", &this->blurCount, 1, 8, "%d");
@@ -184,33 +186,47 @@ void BoxApp::UpdateObjectCBs(const GameTimer &gt) {
 
 #else
 void BoxApp::UpdateInstanceData(const GameTimer &gt) {
+	XMMATRIX view = mCamera.GetView();
+	XMMATRIX invView = XMMatrixInverse(get_rvalue_ptr(XMMatrixDeterminant(view)), view);
+
 	auto currInstanceBuffer = mCurrFrameResources->InstanceBuffer.get();
 	for (auto &e : mAllRitems) {
-		if (e->NumFramesDirty > 0) {
-			const auto &instanceData = e->Instances;
-			int visibleInstanceCount = 0;
-			for (UINT i = 0; i < (UINT)instanceData.size(); ++i) {
-				InstanceData data; //每个实例的数据
-				XMFLOAT4X4 world = instanceData[i].World;
-				XMMATRIX w = XMLoadFloat4x4(&world);
-				XMStoreFloat4x4(&data.World, XMMatrixTranspose(w));
+		const auto &instanceData = e->Instances;
 
-				XMFLOAT4X4 texTransform = instanceData[i].TexTransform;
-				XMMATRIX texTransMatrix = XMLoadFloat4x4(&texTransform);
-				XMStoreFloat4x4(&data.TexTransform, XMMatrixTranspose(texTransMatrix));
+		int visibleInstanceCount = 0;
+
+		for (UINT i = 0; i < (UINT)instanceData.size(); ++i) {
+			XMMATRIX world = XMLoadFloat4x4(&instanceData[i].World);
+			XMMATRIX texTransform = XMLoadFloat4x4(&instanceData[i].TexTransform);
+
+			XMMATRIX invWorld = XMMatrixInverse(get_rvalue_ptr(XMMatrixDeterminant(world)), world);
+
+			// View space to the object's local space.
+			XMMATRIX viewToLocal = XMMatrixMultiply(invView, invWorld);
+
+			// Transform the camera frustum from view space to the object's local space.
+			BoundingFrustum localSpaceFrustum;
+			mCamFrustum.Transform(localSpaceFrustum, viewToLocal);
+
+			// Perform the box/frustum intersection test in local space.
+			if ((localSpaceFrustum.Contains(e->Bounds) != DirectX::DISJOINT) || (mFrustumCullingEnabled == false)) {
+				InstanceData data;
+				XMStoreFloat4x4(&data.World, XMMatrixTranspose(world));
+				XMStoreFloat4x4(&data.TexTransform, XMMatrixTranspose(texTransform));
 				data.MaterialIndex = instanceData[i].MaterialIndex;
-				currInstanceBuffer->CopyData(visibleInstanceCount, data);
-				visibleInstanceCount ++;
+
+				// Write the instance data to structured buffer for the visible objects.
+				currInstanceBuffer->CopyData(visibleInstanceCount++, data);
 			}
-			e->InstanceCount = visibleInstanceCount;
-			e->NumFramesDirty--;
 		}
-		
+
+		e->InstanceCount = visibleInstanceCount;
+
+		std::wostringstream outs;
+		outs.precision(6);
+		outs << L"Instancing and Culling Demo" << L"    " << e->InstanceCount << L" objects visible out of " << e->Instances.size();
+		mMainWndCaption = outs.str();
 	}
-	// std::wostringstream outs;
-	// outs.precision(6);
-	// outs << L"Instancing and Culling Demo" << L"    " << e->InstanceCount << L" objects visible out of " << e->Instances.size();
-	// mMainWndCaption = outs.str();
 }
 
 #endif
@@ -504,28 +520,28 @@ void BoxApp::Draw(const GameTimer &gt) {
 	DrawRenderItems(mCommandList.Get(), mRitemLayer[static_cast<int>(RenderLayer::Opaque)]);
 	#endif
 	// Draw AlphaTest Render Queue
-// 	mCommandList->SetPipelineState(mPSOs["alphaTested"].Get());
-// 	DrawRenderItems(mCommandList.Get(), mRitemLayer[static_cast<int>(RenderLayer::AlphaTest)]);
+	mCommandList->SetPipelineState(mPSOs["alphaTested"].Get());
+	DrawRenderItems(mCommandList.Get(), mRitemLayer[static_cast<int>(RenderLayer::AlphaTest)]);
 
-	// mCommandList->OMSetStencilRef(1);
-	// mCommandList->SetPipelineState(mPSOs["markStencilMirrors"].Get());
-	// DrawRenderItems(mCommandList.Get(), mRitemLayer[static_cast<int>(RenderLayer::Mirrors)]);
-	// //
-	// UINT passCBByteSize = d3dUtil::CalcConstantBufferByteSize(sizeof(PassConstants));
-	// mCommandList->SetGraphicsRootConstantBufferView(3, passCB->GetGPUVirtualAddress() + 1 * passCBByteSize);
-	// mCommandList->SetPipelineState(mPSOs["drawStencilReflections"].Get());
-	// DrawRenderItems(mCommandList.Get(), mRitemLayer[static_cast<int>(RenderLayer::Reflected)]);
+	mCommandList->OMSetStencilRef(1);
+	mCommandList->SetPipelineState(mPSOs["markStencilMirrors"].Get());
+	DrawRenderItems(mCommandList.Get(), mRitemLayer[static_cast<int>(RenderLayer::Mirrors)]);
 
-	// mCommandList->SetGraphicsRootConstantBufferView(3, passCB->GetGPUVirtualAddress());
-	// mCommandList->OMSetStencilRef(0);
-	// mCommandList->SetPipelineState(mPSOs["shadow"].Get());
-	// DrawRenderItems(mCommandList.Get(), mRitemLayer[static_cast<int>(RenderLayer::Shadow)]);
+// 	UINT passCBByteSize = d3dUtil::CalcConstantBufferByteSize(sizeof(PassConstants));
+// 	mCommandList->SetGraphicsRootConstantBufferView(3, passCB->GetGPUVirtualAddress() + 1 * passCBByteSize);
+// 	mCommandList->SetPipelineState(mPSOs["drawStencilReflections"].Get());
+// 	DrawRenderItems(mCommandList.Get(), mRitemLayer[static_cast<int>(RenderLayer::Reflected)]);
 
-	// mCommandList->SetPipelineState(mPSOs["treeSprites"].Get());
-	// DrawRenderItems(mCommandList.Get(), mRitemLayer[static_cast<int>(RenderLayer::AlphaTestedTreeSprites)]);
-
-	// mCommandList->SetPipelineState(mPSOs["transparent"].Get());
-	// DrawRenderItems(mCommandList.Get(), mRitemLayer[static_cast<int>(RenderLayer::Transparent)]);
+// 	mCommandList->SetGraphicsRootConstantBufferView(3, passCB->GetGPUVirtualAddress());
+// 	mCommandList->OMSetStencilRef(0);
+// 	mCommandList->SetPipelineState(mPSOs["shadow"].Get());
+// 	DrawRenderItems(mCommandList.Get(), mRitemLayer[static_cast<int>(RenderLayer::Shadow)]);
+// 
+// 	mCommandList->SetPipelineState(mPSOs["treeSprites"].Get());
+// 	DrawRenderItems(mCommandList.Get(), mRitemLayer[static_cast<int>(RenderLayer::AlphaTestedTreeSprites)]);
+// 
+// 	mCommandList->SetPipelineState(mPSOs["transparent"].Get());
+// 	DrawRenderItems(mCommandList.Get(), mRitemLayer[static_cast<int>(RenderLayer::Transparent)]);
 
 	// if (this->needBlur) {
 	// mBlurFilter->Execute(mCommandList.Get(), mPostProcessRootSignature.Get(),
@@ -677,7 +693,7 @@ void BoxApp::BuildDescriptorHeaps() {
 
 	D3D12_DESCRIPTOR_HEAP_DESC srvHeapDesc = {};
 	// srvHeapDesc.NumDescriptors = 7 + 4; // 4 is Blur Desc Count
-	srvHeapDesc.NumDescriptors = 7 + 4;
+	srvHeapDesc.NumDescriptors = 8 + 4;
 	srvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
 	srvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
 	ThrowIfFailed(md3dDevice->CreateDescriptorHeap(&srvHeapDesc, IID_PPV_ARGS(&mSrvHeap)));
@@ -693,6 +709,7 @@ void BoxApp::BuildDescriptorHeaps() {
 	auto iceTex = mTextures["iceTex"]->Resource;
 	auto white1x1Tex = mTextures["white1x1Tex"]->Resource;
 	auto treeTex = mTextures["treeTex"]->Resource;
+	auto skyTex = mTextures["skyTex"]->Resource;
 
 	D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
 	srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
@@ -738,9 +755,19 @@ void BoxApp::BuildDescriptorHeaps() {
 	srvDesc.Texture2DArray.ArraySize = treeTex->GetDesc().DepthOrArraySize;
 	md3dDevice->CreateShaderResourceView(treeTex.Get(), &srvDesc, hDescriptor);
 
+	hDescriptor.Offset(1, mCbvSrvDescriptorSize);
+	auto desc = skyTex->GetDesc();
+	srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING; 
+	srvDesc.Format = skyTex->GetDesc().Format;
+	srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURECUBE; 
+	srvDesc.Texture2D.MostDetailedMip = 0; 
+	srvDesc.Texture2D.MipLevels = skyTex->GetDesc().MipLevels; 
+	srvDesc.Texture2D.ResourceMinLODClamp = 0.0f; 
+	md3dDevice->CreateShaderResourceView(skyTex.Get(), &srvDesc, hDescriptor);
+
 	mBlurFilter->BuildDescriptors(
-			CD3DX12_CPU_DESCRIPTOR_HANDLE(mSrvHeap->GetCPUDescriptorHandleForHeapStart(), 7, mCbvSrvUavDescriptorSize), // 7 is Textures Desc Count
-			CD3DX12_GPU_DESCRIPTOR_HANDLE(mSrvHeap->GetGPUDescriptorHandleForHeapStart(), 7, mCbvSrvUavDescriptorSize),
+			CD3DX12_CPU_DESCRIPTOR_HANDLE(mSrvHeap->GetCPUDescriptorHandleForHeapStart(), 8, mCbvSrvUavDescriptorSize), // 8 is Textures Desc Count
+			CD3DX12_GPU_DESCRIPTOR_HANDLE(mSrvHeap->GetGPUDescriptorHandleForHeapStart(), 8, mCbvSrvUavDescriptorSize),
 			mCbvSrvUavDescriptorSize);
 }
 
@@ -1524,11 +1551,61 @@ void BoxApp::BuildRoomGeometry() {
 	mGeometries[geo->Name] = std::move(geo);
 }
 
+void BoxApp::BuildSkyGeometry() {
+	GeometryGenerator geoGen;
+	GeometryGenerator::MeshData skySphere = geoGen.CreateSphere(1.0, 20, 20);
+
+	//将顶点数据传入Vertex结构体的数据元素
+	size_t verticesCount = skySphere.Vertices.size(); //总顶点数
+	std::vector<Vertex> vertices(verticesCount); //创建顶点列表
+	for (size_t i = 0; i < verticesCount; i++) {
+		vertices[i].Pos = skySphere.Vertices[i].Position;
+		vertices[i].Normal = skySphere.Vertices[i].Normal;
+		vertices[i].UV0 = skySphere.Vertices[i].TexC;
+	}
+
+	//创建索引列表,并初始化
+	std::vector<std::uint16_t> indices = skySphere.GetIndices16();
+
+	//顶点列表大小
+	const UINT vbByteSize = (UINT)verticesCount * sizeof(Vertex);
+	//索引列表大小
+	const UINT ibByteSize = (UINT)indices.size() * sizeof(std::uint16_t);
+
+	//绘制三参数
+	SubmeshGeometry submesh;
+	submesh.BaseVertexLocation = 0;
+	submesh.StartIndexLocation = 0;
+	submesh.IndexCount = (UINT)indices.size();
+
+	//赋值MeshGeometry结构中的数据元素
+	auto geo = std::make_unique<MeshGeometry>(); //指向MeshGeometry的指针
+	geo->Name = "skySphereGeo";
+	geo->VertexByteStride = sizeof(Vertex); //单个顶点的大小
+	geo->VertexBufferByteSize = vbByteSize;
+	geo->IndexBufferByteSize = ibByteSize;
+	geo->IndexFormat = DXGI_FORMAT_R16_UINT;
+	geo->DrawArgs["skySphere"] = submesh;
+
+	ThrowIfFailed(D3DCreateBlob(vbByteSize, &geo->VertexBufferCPU));
+	CopyMemory(geo->VertexBufferCPU->GetBufferPointer(), vertices.data(), vbByteSize);
+
+	ThrowIfFailed(D3DCreateBlob(ibByteSize, &geo->IndexBufferCPU));
+	CopyMemory(geo->IndexBufferCPU->GetBufferPointer(), indices.data(), ibByteSize);
+
+	geo->VertexBufferGPU = d3dUtil::CreateDefaultBuffer(md3dDevice.Get(),
+			mCommandList.Get(), vertices.data(), vbByteSize, geo->VertexBufferUploader);
+
+	geo->IndexBufferGPU = d3dUtil::CreateDefaultBuffer(md3dDevice.Get(),
+			mCommandList.Get(), indices.data(), ibByteSize, geo->IndexBufferUploader);
+	mGeometries[geo->Name] = std::move(geo);
+}
+
 void BoxApp::BuildSkullGeometry() {
 	std::ifstream fin("Models/skull.txt");
 
 	if (!fin) {
-		MessageBox(nullptr, L"Models/skull.txt not found.", nullptr, 0);
+		MessageBox(0, L"Models/skull.txt not found.", 0, 0);
 		return;
 	}
 
@@ -1540,14 +1617,43 @@ void BoxApp::BuildSkullGeometry() {
 	fin >> ignore >> tcount;
 	fin >> ignore >> ignore >> ignore >> ignore;
 
+	XMFLOAT3 vMinf3(+MathHelper::Infinity, +MathHelper::Infinity, +MathHelper::Infinity);
+	XMFLOAT3 vMaxf3(-MathHelper::Infinity, -MathHelper::Infinity, -MathHelper::Infinity);
+
+	XMVECTOR vMin = XMLoadFloat3(&vMinf3);
+	XMVECTOR vMax = XMLoadFloat3(&vMaxf3);
+
 	std::vector<Vertex> vertices(vcount);
 	for (UINT i = 0; i < vcount; ++i) {
 		fin >> vertices[i].Pos.x >> vertices[i].Pos.y >> vertices[i].Pos.z;
 		fin >> vertices[i].Normal.x >> vertices[i].Normal.y >> vertices[i].Normal.z;
 
-		// Model does not have texture coordinates, so just zero them out.
-		vertices[i].UV0 = { 0.0f, 0.0f };
+		XMVECTOR P = XMLoadFloat3(&vertices[i].Pos);
+
+		// Project point onto unit sphere and generate spherical texture coordinates.
+		XMFLOAT3 spherePos;
+		XMStoreFloat3(&spherePos, XMVector3Normalize(P));
+
+		float theta = atan2f(spherePos.z, spherePos.x);
+
+		// Put in [0, 2pi].
+		if (theta < 0.0f)
+			theta += XM_2PI;
+
+		float phi = acosf(spherePos.y);
+
+		float u = theta / (2.0f * XM_PI);
+		float v = phi / XM_PI;
+
+		vertices[i].UV0 = { u, v };
+
+		vMin = XMVectorMin(vMin, P);
+		vMax = XMVectorMax(vMax, P);
 	}
+
+	BoundingBox bounds;
+	XMStoreFloat3(&bounds.Center, XMVectorScale(XMVectorAdd(vMin, vMax), 0.5));
+	XMStoreFloat3(&bounds.Extents, XMVectorScale(XMVectorSubtract(vMax, vMin), 0.5));
 
 	fin >> ignore;
 	fin >> ignore;
@@ -1564,9 +1670,9 @@ void BoxApp::BuildSkullGeometry() {
 	// Pack the indices of all the meshes into one index buffer.
 	//
 
-	const UINT vbByteSize = static_cast<UINT>(vertices.size()) * sizeof(Vertex);
+	const UINT vbByteSize = (UINT)vertices.size() * sizeof(Vertex);
 
-	const UINT ibByteSize = static_cast<UINT>(indices.size()) * sizeof(std::int32_t);
+	const UINT ibByteSize = (UINT)indices.size() * sizeof(std::int32_t);
 
 	auto geo = std::make_unique<MeshGeometry>();
 	geo->Name = "skullGeo";
@@ -1589,9 +1695,10 @@ void BoxApp::BuildSkullGeometry() {
 	geo->IndexBufferByteSize = ibByteSize;
 
 	SubmeshGeometry submesh;
-	submesh.IndexCount = static_cast<UINT>(indices.size());
+	submesh.IndexCount = (UINT)indices.size();
 	submesh.StartIndexLocation = 0;
 	submesh.BaseVertexLocation = 0;
+	submesh.Bounds = bounds;
 
 	geo->DrawArgs["skull"] = submesh;
 
@@ -1891,6 +1998,7 @@ void BoxApp::BuildInstanceRenderItems() {
 	skullRitem->IndexCount = skullRitem->Geo->DrawArgs["skull"].IndexCount;
 	skullRitem->StartIndexLocation = skullRitem->Geo->DrawArgs["skull"].StartIndexLocation;
 	skullRitem->BaseVertexLocation = skullRitem->Geo->DrawArgs["skull"].BaseVertexLocation;
+	skullRitem->Bounds = skullRitem->Geo->DrawArgs["skull"].Bounds;
 
 	// Generate instance data.
 	const int n = 5;
@@ -1919,7 +2027,7 @@ void BoxApp::BuildInstanceRenderItems() {
 						x + j * dx, y + i * dy, z + k * dz, 1.0f);
 
 				XMStoreFloat4x4(&skullRitem->Instances[index].TexTransform, XMMatrixScaling(2.0f, 2.0f, 1.0f));
-				skullRitem->Instances[index].MaterialIndex = index % mMaterials.size();
+				skullRitem->Instances[index].MaterialIndex = index % (mMaterials.size() - 1);
 			}
 		}
 	}
@@ -2061,6 +2169,14 @@ void BoxApp::BuildMaterials() {
 	treeMat->Roughness = 0.8f;
 	treeMat->DiffuseSrvHeapIndex = 6;
 
+	auto skyMat = std::make_unique<Material>();
+	treeMat->Name = "skyMat";
+	treeMat->MatCBIndex = 9;
+	treeMat->DiffuseAlbedo = XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f);
+	treeMat->FresnelR0 = XMFLOAT3(0.05f, 0.05f, 0.05f);
+	treeMat->Roughness = 0.1f;
+	treeMat->DiffuseSrvHeapIndex = 7;
+
 	// 将材质数据存放在系统内存之中,为了GPU能够在着色器中访问,还需复制到常量缓冲区中
 	mMaterials["grass"] = std::move(grass);
 	mMaterials["water"] = std::move(water);
@@ -2071,6 +2187,7 @@ void BoxApp::BuildMaterials() {
 	mMaterials["checkertile"] = std::move(checkertile);
 	mMaterials["shadowMat"] = std::move(shadowMat);
 	mMaterials["treeMat"] = std::move(treeMat);
+	mMaterials["skyMat"] = std::move(skyMat);
 }
 
 void BoxApp::LoadTextures() {
@@ -2126,6 +2243,13 @@ void BoxApp::LoadTextures() {
 			mCommandList.Get(), treeTex->Filename.c_str(),
 			treeTex->Resource, treeTex->UploadHeap));
 
+	auto skyTex = std::make_unique<Texture>();
+	skyTex->Name = "skyTex";
+	skyTex->Filename = L"Textures/snowcube1024.dds";
+	ThrowIfFailed(DirectX::CreateDDSTextureFromFile12(md3dDevice.Get(), mCommandList.Get(),
+			skyTex->Filename.c_str(), //将wstring转成wChar_t
+			skyTex->Resource, skyTex->UploadHeap));
+
 	mTextures[woodCrateTex->Name] = std::move(woodCrateTex);
 	mTextures[woodCrateTex2->Name] = std::move(woodCrateTex2);
 	mTextures[water->Name] = std::move(water);
@@ -2133,6 +2257,7 @@ void BoxApp::LoadTextures() {
 	mTextures[iceTex->Name] = std::move(iceTex);
 	mTextures[white1x1Tex->Name] = std::move(white1x1Tex);
 	mTextures[treeTex->Name] = std::move(treeTex);
+	mTextures[skyTex->Name] = std::move(skyTex);
 }
 
 void BoxApp::AnimateMaterial(const GameTimer &gt) {
