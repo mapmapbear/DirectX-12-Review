@@ -63,6 +63,7 @@ bool BoxApp::Initialize() {
 	BuildMaterials();
 #ifdef INSTANCE_RENDER
 	BuildInstanceRenderItems();
+	//BuildSkyRenderItems();
 #else
 	BuildRenderItems();
 #endif
@@ -505,7 +506,11 @@ void BoxApp::Draw(const GameTimer &gt) {
 	ID3D12DescriptorHeap *descriptorHeaps[] = { mSrvHeap.Get() };
 	mCommandList->SetDescriptorHeaps(_countof(descriptorHeaps), descriptorHeaps);
 	mCommandList->SetGraphicsRootSignature(mRootSignature.Get());
-	mCommandList->SetGraphicsRootDescriptorTable(0, mSrvHeap->GetGPUDescriptorHandleForHeapStart());
+	mCommandList->SetGraphicsRootDescriptorTable(4, mSrvHeap->GetGPUDescriptorHandleForHeapStart());
+
+	CD3DX12_GPU_DESCRIPTOR_HANDLE skyTexDescriptor(mSrvHeap->GetGPUDescriptorHandleForHeapStart());
+	skyTexDescriptor.Offset(mSkyTexHeapIndex, mCbvSrvDescriptorSize);
+	mCommandList->SetGraphicsRootDescriptorTable(0, skyTexDescriptor);
 
 	auto matSB = mCurrFrameResources->MaterialBuffer->Resource();
 	mCommandList->SetGraphicsRootShaderResourceView(2, //根参数索引
@@ -516,6 +521,9 @@ void BoxApp::Draw(const GameTimer &gt) {
 
 	#ifdef INSTANCE_RENDER
 	DrawInstanceRenderItems(mCommandList.Get(), mRitemLayer[static_cast<int>(RenderLayer::Opaque)]);
+
+	mCommandList->SetPipelineState(mPSOs["SkySphere"].Get());
+	DrawInstanceRenderItems(mCommandList.Get(), mRitemLayer[static_cast<int>(RenderLayer::Sky)]);
 	#else
 	DrawRenderItems(mCommandList.Get(), mRitemLayer[static_cast<int>(RenderLayer::Opaque)]);
 	#endif
@@ -764,6 +772,7 @@ void BoxApp::BuildDescriptorHeaps() {
 	srvDesc.Texture2D.MipLevels = skyTex->GetDesc().MipLevels; 
 	srvDesc.Texture2D.ResourceMinLODClamp = 0.0f; 
 	md3dDevice->CreateShaderResourceView(skyTex.Get(), &srvDesc, hDescriptor);
+	mSkyTexHeapIndex = 7;
 
 	mBlurFilter->BuildDescriptors(
 			CD3DX12_CPU_DESCRIPTOR_HANDLE(mSrvHeap->GetCPUDescriptorHandleForHeapStart(), 8, mCbvSrvUavDescriptorSize), // 8 is Textures Desc Count
@@ -950,10 +959,10 @@ std::array<const CD3DX12_STATIC_SAMPLER_DESC, 1> BoxApp::GetStaticSamplers1() {
 void BoxApp::BuildRootSignature() {
 #ifdef DYNAMIC_RESOURCES
 	CD3DX12_DESCRIPTOR_RANGE srvTable;
-	srvTable.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 6, 0);
+	srvTable.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 6, 2);
 
 	CD3DX12_DESCRIPTOR_RANGE srvTable1;
-	srvTable1.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 2);
+	srvTable1.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);
 	
 	CD3DX12_ROOT_PARAMETER slotRootParameter[5];
 	slotRootParameter[0].InitAsDescriptorTable(1, &srvTable1, D3D12_SHADER_VISIBILITY_PIXEL);
@@ -1111,7 +1120,8 @@ void BoxApp::BuildShadersAndInputLayout() {
 	mShaders["horzBlurCS"] = d3dUtil::CompileShader(L"../../Shaders\\Blur.hlsl", nullptr, "HorzBlurCS", "cs_5_0");
 	mShaders["vertBlurCS"] = d3dUtil::CompileShader(L"../../Shaders\\Blur.hlsl", nullptr, "VertBlurCS", "cs_5_0");
 	// mShaders["wavesUpdateCS"] = d3dUtil::CompileShader(L"Shaders\\WaveSim.hlsl", nullptr, "UpdateWavesCS", "cs_5_0");
-
+	mShaders["SkyVS"] = d3dUtil::CompileShader(L"../../Shaders\\Sky.hlsl", nullptr, "VS", "vs_5_1");
+	mShaders["SkyPS"] = d3dUtil::CompileShader(L"../../Shaders\\Sky.hlsl", nullptr, "PS", "ps_5_1");
 	// LPCSTR SemanticName; UINT SemanticIndex; DXGI_FORMAT Format; UINT InputSlot; UINT AlignedByteOffset; D3D12_INPUT_CLASSIFICATION InputSlotClass; UINT InstanceDataStepRate; D3D12_INPUT_ELEMENT_DESC;
 	mInputLayout = {
 		{ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
@@ -1301,6 +1311,13 @@ void BoxApp::BuildPSO() {
 	};
 	vertBlurPSO.Flags = D3D12_PIPELINE_STATE_FLAG_NONE;
 	ThrowIfFailed(md3dDevice->CreateComputePipelineState(&vertBlurPSO, IID_PPV_ARGS(&mPSOs["vertBlur"])));
+
+	D3D12_GRAPHICS_PIPELINE_STATE_DESC skySpherePsoDesc = opaquePsoDesc;
+	skySpherePsoDesc.VS = { reinterpret_cast<BYTE *>(mShaders["SkyVS"]->GetBufferPointer()), mShaders["SkyVS"]->GetBufferSize() };
+	skySpherePsoDesc.PS = { reinterpret_cast<BYTE *>(mShaders["SkyPS"]->GetBufferPointer()), mShaders["SkyPS"]->GetBufferSize() };
+	skySpherePsoDesc.DepthStencilState.DepthFunc = D3D12_COMPARISON_FUNC_LESS_EQUAL;
+	skySpherePsoDesc.RasterizerState.CullMode = D3D12_CULL_MODE_NONE;
+	ThrowIfFailed(md3dDevice->CreateGraphicsPipelineState(&skySpherePsoDesc, IID_PPV_ARGS(&mPSOs["SkySphere"])));
 
 	// D3D12_COMPUTE_PIPELINE_STATE_DESC wavesUpdatePSO = {};
 	// wavesUpdatePSO.pRootSignature = mWaveRootSignature.Get();
@@ -2000,6 +2017,29 @@ void BoxApp::BuildInstanceRenderItems() {
 	skullRitem->BaseVertexLocation = skullRitem->Geo->DrawArgs["skull"].BaseVertexLocation;
 	skullRitem->Bounds = skullRitem->Geo->DrawArgs["skull"].Bounds;
 
+
+	auto skyRitem = std::make_unique<RenderItem>();
+	skyRitem->World = MathHelper::Identity4x4();
+	XMStoreFloat4x4(&skyRitem->World, XMMatrixScaling(5000.0f, 5000.0f, 5000.0f));
+	skyRitem->Name = "Sky";
+	skyRitem->NumFramesDirty = 3;
+	skyRitem->TexTransform = MathHelper::Identity4x4();
+	skyRitem->ObjCBIndex = 1;
+	skyRitem->Mat = mMaterials["skyMat"].get();
+	skyRitem->Geo = mGeometries["shapeGeo"].get();
+	skyRitem->PrimitiveType = D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
+	skyRitem->IndexCount = skyRitem->Geo->DrawArgs["sphere"].IndexCount;
+	skyRitem->StartIndexLocation = skyRitem->Geo->DrawArgs["sphere"].StartIndexLocation;
+	skyRitem->BaseVertexLocation = skyRitem->Geo->DrawArgs["sphere"].BaseVertexLocation;
+	skyRitem->Instances.resize(1);
+	skyRitem->Instances[0].World = MathHelper::Identity4x4();
+	XMStoreFloat4x4(&skyRitem->Instances[0].World, XMMatrixScaling(5000.0f, 5000.0f, 5000.0f));
+	// XMStoreFloat4x4(&skyRitem->Instances[0].TexTransform, XMMatrixScaling(1.0f, 1.0f, 1.0f));
+	skyRitem->Instances[0].MaterialIndex = 9;
+	mRitemLayer[static_cast<int>(RenderLayer::Sky)].push_back(skyRitem.get());
+	mAllRitems.push_back(std::move(skyRitem));
+
+
 	// Generate instance data.
 	const int n = 5;
 	mInstanceCount = n * n * n;
@@ -2027,7 +2067,7 @@ void BoxApp::BuildInstanceRenderItems() {
 						x + j * dx, y + i * dy, z + k * dz, 1.0f);
 
 				XMStoreFloat4x4(&skullRitem->Instances[index].TexTransform, XMMatrixScaling(2.0f, 2.0f, 1.0f));
-				skullRitem->Instances[index].MaterialIndex = index % (mMaterials.size() - 1);
+				skullRitem->Instances[index].MaterialIndex = index % (mMaterials.size() - 2);
 			}
 		}
 	}
@@ -2037,6 +2077,24 @@ void BoxApp::BuildInstanceRenderItems() {
 	// All the render items are opaque.
 	for (auto &e : mAllRitems)
 		mRitemLayer[static_cast<int>(RenderLayer::Opaque)].push_back(e.get());
+}
+
+void BoxApp::BuildSkyRenderItems() {
+	auto skyRitem = std::make_unique<RenderItem>();
+	XMStoreFloat4x4(&skyRitem->World, XMMatrixScaling(5000.0f, 5000.0f, 5000.0f));
+	skyRitem->Name = "Sky";
+	skyRitem->NumFramesDirty = 3;
+	skyRitem->TexTransform = MathHelper::Identity4x4();
+	skyRitem->ObjCBIndex = 1;
+	skyRitem->Mat = mMaterials["skyMat"].get();
+	skyRitem->Geo = mGeometries["shapeGeo"].get();
+	skyRitem->PrimitiveType = D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
+	skyRitem->IndexCount = skyRitem->Geo->DrawArgs["sphere"].IndexCount;
+	skyRitem->StartIndexLocation = skyRitem->Geo->DrawArgs["sphere"].StartIndexLocation;
+	skyRitem->BaseVertexLocation = skyRitem->Geo->DrawArgs["sphere"].BaseVertexLocation;
+
+	mRitemLayer[static_cast<int>(RenderLayer::Sky)].push_back(skyRitem.get());
+	mAllRitems.push_back(std::move(skyRitem));
 }
 #endif
 

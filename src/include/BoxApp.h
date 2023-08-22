@@ -44,6 +44,7 @@ enum class RenderLayer : int {
 	Transparent,
 	AlphaTest,
 	Shadow,
+	Sky,
 	AlphaTestedTreeSprites,
 	Count
 };
@@ -96,6 +97,7 @@ private:
 	void BuildTreeSpritesGeometry();
 	void BuildRenderItems();
 	void BuildInstanceRenderItems();
+	void BuildSkyRenderItems();
 	void BuildSkyGeometry();
 	float GetHillsHeight(float x, float z) const;
 	void BuildWavesGeometryBuffers();
@@ -180,6 +182,8 @@ private:
 	Camera mCamera;
 	BoundingFrustum mCamFrustum;
 	bool mFrustumCullingEnabled = true;
+
+	UINT mSkyTexHeapIndex = 0;
 
 	UINT posState;
 	UINT gColorState;
