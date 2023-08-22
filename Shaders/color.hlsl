@@ -27,7 +27,6 @@
 
 #include "LightingUtil.hlsl"
 
-#ifdef DYNAMIC_RESOURCES
 struct MaterialData {
 	float4 gDiffuseAlbedo; //材质反照率
 	float3 gFresnelR0; //RF(0)值，即材质的反射属性
@@ -39,18 +38,8 @@ struct MaterialData {
 	uint gMatPad2;
 };
 StructuredBuffer<MaterialData> gMaterialData : register(t1, space1);
-#else
-struct cbMaterial
-{
-    float4 gDiffuseAlbedo; // 漫反射反照率
-    float3 gFresnelR0; // 材质属性RF(0°),影响镜面反射
-    float gRoughness;
-    float4x4 gMatTransform;
-};
-ConstantBuffer<cbMaterial> gMatCBPass : register(b2);
-#endif
 
-#ifdef INSTANCE_RENDER
+
 struct InstanceData
 {
 	float4x4 World;
@@ -61,13 +50,9 @@ struct InstanceData
 	uint     InstPad2;
 };
 StructuredBuffer<InstanceData> gInstanceData : register(t0, space1);
-#endif
 
-#ifndef DYNAMIC_RESOURCES
-	Texture2D gDiffuseMap : register(t0);
-#else
-	Texture2D gDiffuseMap[6] : register(t0); // 纹理	
-#endif
+Texture2D gDiffuseMap[6] : register(t2); // 纹理
+TextureCube gCubeMap : register(t0);
 
 SamplerState gsamPointWrap        : register(s0); // 采样器
 SamplerState gsamPointClamp       : register(s1);
@@ -77,20 +62,6 @@ SamplerState gsamAnisotropicWrap  : register(s4);
 SamplerState gsamAnisotropicClamp : register(s5);
 
 
-#ifndef INSTANCE_RENDER
-struct cbPerObject // 通过根签名将常量缓冲区与寄存器槽绑定
-{
-	float4x4 gWorld;
-	float4x4 gTexTransform; // UV需要乘这个矩阵
-#ifdef DYNAMIC_RESOURCES
-	uint gMaterialDataIndex;
-	uint gObjPad0;
-	uint gObjPad1;
-	uint gObjPad2;
-#endif
-};
-ConstantBuffer<cbPerObject> gCBPerObject : register(b0);
-#endif
 
 struct cbPass {
 	float4x4 gView;
@@ -117,11 +88,7 @@ struct cbPass {
 	float gFogStart;
 	float2 cbPerObjectPad3;
 };
-#ifdef INSTANCE_RENDER
 ConstantBuffer<cbPass> gCBPass : register(b0);
-#else
-ConstantBuffer<cbPass> gCBPass : register(b1);
-#endif
 
 
 

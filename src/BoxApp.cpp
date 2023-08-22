@@ -756,7 +756,7 @@ void BoxApp::BuildDescriptorHeaps() {
 	md3dDevice->CreateShaderResourceView(treeTex.Get(), &srvDesc, hDescriptor);
 
 	hDescriptor.Offset(1, mCbvSrvDescriptorSize);
-	auto desc = skyTex->GetDesc();
+	/*auto desc = skyTex->GetDesc();*/
 	srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING; 
 	srvDesc.Format = skyTex->GetDesc().Format;
 	srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURECUBE; 
@@ -951,18 +951,18 @@ void BoxApp::BuildRootSignature() {
 #ifdef DYNAMIC_RESOURCES
 	CD3DX12_DESCRIPTOR_RANGE srvTable;
 	srvTable.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 6, 0);
+
+	CD3DX12_DESCRIPTOR_RANGE srvTable1;
+	srvTable1.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 2);
 	
-	CD3DX12_ROOT_PARAMETER slotRootParameter[4];
-	slotRootParameter[0].InitAsDescriptorTable(1, &srvTable, D3D12_SHADER_VISIBILITY_PIXEL);
-#ifdef INSTANCE_RENDER
+	CD3DX12_ROOT_PARAMETER slotRootParameter[5];
+	slotRootParameter[0].InitAsDescriptorTable(1, &srvTable1, D3D12_SHADER_VISIBILITY_PIXEL);
 	slotRootParameter[1].InitAsShaderResourceView(0, 1);
 	slotRootParameter[2].InitAsShaderResourceView(1, 1);
 	slotRootParameter[3].InitAsConstantBufferView(0);
-#else
-	slotRootParameter[1].InitAsConstantBufferView(0);
-	slotRootParameter[2].InitAsShaderResourceView(0, 1);
-	slotRootParameter[3].InitAsConstantBufferView(1);
-#endif
+	slotRootParameter[4].InitAsDescriptorTable(1, &srvTable, D3D12_SHADER_VISIBILITY_PIXEL);
+
+
 #else
 	CD3DX12_DESCRIPTOR_RANGE texTable;
 	texTable.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0); // register t0
@@ -979,7 +979,7 @@ void BoxApp::BuildRootSignature() {
 	auto staticSamplers = GetStaticSamplers(); // register s0 ~ s6
 
 	// 根签名是根参数数组
-	CD3DX12_ROOT_SIGNATURE_DESC rootSigDesc(4, slotRootParameter,
+	CD3DX12_ROOT_SIGNATURE_DESC rootSigDesc(5, slotRootParameter,
 			(staticSamplers.size()), staticSamplers.data(),
 			D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
 
@@ -2170,12 +2170,12 @@ void BoxApp::BuildMaterials() {
 	treeMat->DiffuseSrvHeapIndex = 6;
 
 	auto skyMat = std::make_unique<Material>();
-	treeMat->Name = "skyMat";
-	treeMat->MatCBIndex = 9;
-	treeMat->DiffuseAlbedo = XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f);
-	treeMat->FresnelR0 = XMFLOAT3(0.05f, 0.05f, 0.05f);
-	treeMat->Roughness = 0.1f;
-	treeMat->DiffuseSrvHeapIndex = 7;
+	skyMat->Name = "skyMat";
+	skyMat->MatCBIndex = 9;
+	skyMat->DiffuseAlbedo = XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f);
+	skyMat->FresnelR0 = XMFLOAT3(0.05f, 0.05f, 0.05f);
+	skyMat->Roughness = 0.1f;
+	skyMat->DiffuseSrvHeapIndex = 7;
 
 	// 将材质数据存放在系统内存之中,为了GPU能够在着色器中访问,还需复制到常量缓冲区中
 	mMaterials["grass"] = std::move(grass);
