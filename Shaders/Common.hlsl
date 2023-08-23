@@ -14,11 +14,11 @@
 
 struct MaterialData
 {
-    float4 gDiffuseAlbedo; //²ÄÖÊ·´ÕÕÂÊ
-    float3 gFresnelR0; //RF(0)Öµ£¬¼´²ÄÖÊµÄ·´ÉäÊôÐÔ
-    float gRoughness; //²ÄÖÊµÄ´Ö²Ú¶È
-    float4x4 gMatTransform; //UV¶¯»­±ä»»¾ØÕó
-    uint gDiffuseMapIndex; //ÎÆÀíÊý×éË÷Òý
+    float4 gDiffuseAlbedo; //ï¿½ï¿½ï¿½Ê·ï¿½ï¿½ï¿½ï¿½ï¿½
+    float3 gFresnelR0; //RF(0)Öµï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ÊµÄ·ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+    float gRoughness; //ï¿½ï¿½ï¿½ÊµÄ´Ö²Ú¶ï¿½
+    float4x4 gMatTransform; //UVï¿½ï¿½ï¿½ï¿½ï¿½ä»»ï¿½ï¿½ï¿½ï¿½
+    uint gDiffuseMapIndex; //ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
     uint gMatPad0;
     uint gMatPad1;
     uint gMatPad2;
@@ -37,10 +37,10 @@ struct InstanceData
 };
 StructuredBuffer<InstanceData> gInstanceData : register(t0, space1);
 
-Texture2D gDiffuseMap[6] : register(t2); // ÎÆÀí
+Texture2D gDiffuseMap[6] : register(t2);
 TextureCube gCubeMap : register(t0);
 
-SamplerState gsamPointWrap : register(s0); // ²ÉÑùÆ÷
+SamplerState gsamPointWrap : register(s0);
 SamplerState gsamPointClamp : register(s1);
 SamplerState gsamLinearWrap : register(s2);
 SamplerState gsamLinearClamp : register(s3);
@@ -80,7 +80,7 @@ ConstantBuffer<cbPass> gCBPass : register(b0);
 
 
 
-// ´Ó Gamma ¿Õ¼äµ½ÏßÐÔ¿Õ¼äµÄÑÕÉ«½âÂë
+// ï¿½ï¿½ Gamma ï¿½Õ¼äµ½ï¿½ï¿½ï¿½Ô¿Õ¼ï¿½ï¿½ï¿½ï¿½É«ï¿½ï¿½ï¿½ï¿½
 float3 gammaDecode(float3 color, float gamma)
 {
     return pow(color, gamma);

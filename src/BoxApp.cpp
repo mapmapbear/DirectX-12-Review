@@ -191,11 +191,9 @@ void BoxApp::UpdateInstanceData(const GameTimer &gt) {
 	XMMATRIX invView = XMMatrixInverse(get_rvalue_ptr(XMMatrixDeterminant(view)), view);
 
 	auto currInstanceBuffer = mCurrFrameResources->InstanceBuffer.get();
+	int visibleInstanceCount = 0;
 	for (auto &e : mAllRitems) {
 		const auto &instanceData = e->Instances;
-
-		int visibleInstanceCount = 0;
-
 		for (UINT i = 0; i < (UINT)instanceData.size(); ++i) {
 			XMMATRIX world = XMLoadFloat4x4(&instanceData[i].World);
 			XMMATRIX texTransform = XMLoadFloat4x4(&instanceData[i].TexTransform);
@@ -525,15 +523,15 @@ void BoxApp::Draw(const GameTimer &gt) {
 	mCommandList->SetPipelineState(mPSOs["SkySphere"].Get());
 	DrawInstanceRenderItems(mCommandList.Get(), mRitemLayer[static_cast<int>(RenderLayer::Sky)]);
 	#else
-	DrawRenderItems(mCommandList.Get(), mRitemLayer[static_cast<int>(RenderLayer::Opaque)]);
+	/*DrawRenderItems(mCommandList.Get(), mRitemLayer[static_cast<int>(RenderLayer::Opaque)]);*/
 	#endif
 	// Draw AlphaTest Render Queue
-	mCommandList->SetPipelineState(mPSOs["alphaTested"].Get());
-	DrawRenderItems(mCommandList.Get(), mRitemLayer[static_cast<int>(RenderLayer::AlphaTest)]);
-
-	mCommandList->OMSetStencilRef(1);
-	mCommandList->SetPipelineState(mPSOs["markStencilMirrors"].Get());
-	DrawRenderItems(mCommandList.Get(), mRitemLayer[static_cast<int>(RenderLayer::Mirrors)]);
+// 	mCommandList->SetPipelineState(mPSOs["alphaTested"].Get());
+// 	DrawRenderItems(mCommandList.Get(), mRitemLayer[static_cast<int>(RenderLayer::AlphaTest)]);
+// 
+// 	mCommandList->OMSetStencilRef(1);
+// 	mCommandList->SetPipelineState(mPSOs["markStencilMirrors"].Get());
+// 	DrawRenderItems(mCommandList.Get(), mRitemLayer[static_cast<int>(RenderLayer::Mirrors)]);
 
 // 	UINT passCBByteSize = d3dUtil::CalcConstantBufferByteSize(sizeof(PassConstants));
 // 	mCommandList->SetGraphicsRootConstantBufferView(3, passCB->GetGPUVirtualAddress() + 1 * passCBByteSize);
@@ -2007,6 +2005,7 @@ void BoxApp::BuildInstanceRenderItems() {
 	auto skullRitem = std::make_unique<RenderItem>();
 	skullRitem->World = MathHelper::Identity4x4();
 	skullRitem->TexTransform = MathHelper::Identity4x4();
+	skullRitem->Name = "skullRitem";
 	skullRitem->ObjCBIndex = 0;
 	skullRitem->Mat = mMaterials["grass"].get();
 	skullRitem->Geo = mGeometries["skullGeo"].get();
@@ -2016,26 +2015,33 @@ void BoxApp::BuildInstanceRenderItems() {
 	skullRitem->StartIndexLocation = skullRitem->Geo->DrawArgs["skull"].StartIndexLocation;
 	skullRitem->BaseVertexLocation = skullRitem->Geo->DrawArgs["skull"].BaseVertexLocation;
 	skullRitem->Bounds = skullRitem->Geo->DrawArgs["skull"].Bounds;
-
+	mRitemLayer[static_cast<int>(RenderLayer::Opaque)].push_back(skullRitem.get());
 
 	auto skyRitem = std::make_unique<RenderItem>();
 	skyRitem->World = MathHelper::Identity4x4();
 	XMStoreFloat4x4(&skyRitem->World, XMMatrixScaling(5000.0f, 5000.0f, 5000.0f));
-	skyRitem->Name = "Sky";
-	skyRitem->NumFramesDirty = 3;
 	skyRitem->TexTransform = MathHelper::Identity4x4();
+	skyRitem->Name = "SkyRitem";
 	skyRitem->ObjCBIndex = 1;
 	skyRitem->Mat = mMaterials["skyMat"].get();
 	skyRitem->Geo = mGeometries["shapeGeo"].get();
 	skyRitem->PrimitiveType = D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
+	skyRitem->InstanceCount = 1;
 	skyRitem->IndexCount = skyRitem->Geo->DrawArgs["sphere"].IndexCount;
 	skyRitem->StartIndexLocation = skyRitem->Geo->DrawArgs["sphere"].StartIndexLocation;
 	skyRitem->BaseVertexLocation = skyRitem->Geo->DrawArgs["sphere"].BaseVertexLocation;
-	skyRitem->Instances.resize(1);
-	skyRitem->Instances[0].World = MathHelper::Identity4x4();
-	XMStoreFloat4x4(&skyRitem->Instances[0].World, XMMatrixScaling(5000.0f, 5000.0f, 5000.0f));
-	// XMStoreFloat4x4(&skyRitem->Instances[0].TexTransform, XMMatrixScaling(1.0f, 1.0f, 1.0f));
-	skyRitem->Instances[0].MaterialIndex = 9;
+	skyRitem->Bounds = skullRitem->Geo->DrawArgs["sphere"].Bounds;
+	skyRitem->Instances.resize(skyRitem->InstanceCount);
+	for (int i = 0; i < skyRitem->InstanceCount; ++i) {
+		skyRitem->Instances[i].World = XMFLOAT4X4(
+				9999.0f, 0.0, 0.0f, 0.0f,
+				0.0f, 9999.0f, 0.0f, 0.0f,
+				0.0f, 0.0f, 9999.0f, 0.0f,
+				0.0f, 0.0f, 0.0f, 1.0f);
+
+		XMStoreFloat4x4(&skyRitem->Instances[i].TexTransform, XMMatrixScaling(5.0f, 5.0f, 5.0f));
+		skyRitem->Instances[i].MaterialIndex = 7;
+	}
 	mRitemLayer[static_cast<int>(RenderLayer::Sky)].push_back(skyRitem.get());
 	mAllRitems.push_back(std::move(skyRitem));
 
@@ -2071,12 +2077,12 @@ void BoxApp::BuildInstanceRenderItems() {
 			}
 		}
 	}
-
+	
 	mAllRitems.push_back(std::move(skullRitem));
 
 	// All the render items are opaque.
-	for (auto &e : mAllRitems)
-		mRitemLayer[static_cast<int>(RenderLayer::Opaque)].push_back(e.get());
+// 	for (auto &e : mAllRitems)
+// 		mRitemLayer[static_cast<int>(RenderLayer::Opaque)].push_back(e.get());
 }
 
 void BoxApp::BuildSkyRenderItems() {
@@ -2233,7 +2239,7 @@ void BoxApp::BuildMaterials() {
 	skyMat->DiffuseAlbedo = XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f);
 	skyMat->FresnelR0 = XMFLOAT3(0.05f, 0.05f, 0.05f);
 	skyMat->Roughness = 0.1f;
-	skyMat->DiffuseSrvHeapIndex = 7;
+	skyMat->DiffuseSrvHeapIndex = 6;
 
 	// 将材质数据存放在系统内存之中,为了GPU能够在着色器中访问,还需复制到常量缓冲区中
 	mMaterials["grass"] = std::move(grass);
