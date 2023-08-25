@@ -103,7 +103,7 @@ public:
 
 	std::unique_ptr<UploadBuffer<PassConstants>> PassCB = nullptr;
 #ifdef INSTANCE_RENDER
-		std::unique_ptr<UploadBuffer<InstanceData>> InstanceBuffer = nullptr;
+	std::vector<std::unique_ptr<UploadBuffer<InstanceData>>> InstanceBufferArr;
 #else
 		std::unique_ptr<UploadBuffer<ObjectConstants>> ObjectCB = nullptr;
 #endif

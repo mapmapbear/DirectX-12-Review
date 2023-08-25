@@ -84,7 +84,7 @@ float4 PS(VertexOut pin) : SV_Target
     float3 fresnelR0 = matData.gFresnelR0;
     float roughness = matData.gRoughness;
     uint diffuseTexIndex = matData.gDiffuseMapIndex;
-
+	
     //在数组中动态地查找纹理
     diffuseAlbedo *= gDiffuseMap[diffuseTexIndex].Sample(gsamAnisotropicWrap, pin.UV0);
     #ifdef ALPHA_TEST
@@ -92,13 +92,17 @@ float4 PS(VertexOut pin) : SV_Target
 	#endif
     float3 worldNormal = normalize(pin.NormalW);
     float3 worldView = normalize(gCBPass.gEyePosW - pin.PosW);
-    
+	float smoothness = 1.0f - roughness;
+	float3 r = reflect(-worldView, pin.NormalW);
+	float3 fresnelFactor = SchlickFresnel(fresnelR0, pin.NormalW, r);
+	float4 reflectionColor = gCubeMap.Sample(gsamLinearWrap, r);
     Material mat = { diffuseAlbedo, fresnelR0, roughness };
     float3 shadowFactor = 1.0f;//暂时使用1.0，不对计算产生影响
     float4 directLight = ComputeLighting(gCBPass.gLights, mat, pin.PosW, worldNormal, worldView, shadowFactor);
     float4 ambient = gCBPass.gAmbientLight * diffuseAlbedo;
     float4 diffuse = directLight * diffuseAlbedo;
     float4 finalCol = ambient + diffuse;
+	finalCol.rgb += (reflectionColor.rgb * fresnelFactor * smoothness);
     finalCol.a = diffuseAlbedo.a;
 
     return finalCol;

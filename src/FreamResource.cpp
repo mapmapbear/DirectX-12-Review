@@ -7,7 +7,10 @@ FrameResource::FrameResource(ID3D12Device *device, UINT passCount, UINT objectCo
 
     PassCB = std::make_unique<UploadBuffer<PassConstants>>(device, passCount, true);
 #ifdef INSTANCE_RENDER
-	InstanceBuffer = std::make_unique<UploadBuffer<InstanceData>>(device, objectCount, false);
+	InstanceBufferArr.resize(objectCount);
+	for (int i = 0; i < InstanceBufferArr.size(); ++i) {
+		InstanceBufferArr[i] = std::make_unique<UploadBuffer<InstanceData>>(device, 100, false);
+	}
 #else
 	ObjectCB = std::make_unique<UploadBuffer<ObjectConstants>>(device, objectCount, true);
 #endif
@@ -23,8 +26,10 @@ FrameResource::FrameResource(ID3D12Device *device, UINT passCount, UINT objectCo
 
 	PassCB = std::make_unique<UploadBuffer<PassConstants>>(device, passCount, true);
 	#ifdef INSTANCE_RENDER
-	UINT maxInstanceCount = objectCount;
-	InstanceBuffer = std::make_unique<UploadBuffer<InstanceData>>(device, maxInstanceCount, false);
+	InstanceBufferArr.resize(objectCount);
+	for (int i = 0; i < InstanceBufferArr.size(); ++i) {
+		InstanceBufferArr[i] = std::make_unique<UploadBuffer<InstanceData>>(device, 20, false);	
+	}
 	#else
 	ObjectCB = std::make_unique<UploadBuffer<ObjectConstants>>(device, objectCount, true);
 	#endif

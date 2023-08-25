@@ -76,6 +76,8 @@ private:
 
 	void DrawInstanceRenderItems(ID3D12GraphicsCommandList *cmdList, const std::vector<RenderItem *> &ritems);
 
+	void DrawSkyRenderItems(ID3D12GraphicsCommandList *cmdList, const std::vector<RenderItem *> &ritems);
+
 	virtual void OnMouseDown(WPARAM btnState, int x, int y) override;
 	virtual void OnMouseUp(WPARAM btnState, int x, int y) override;
 	virtual void OnMouseMove(WPARAM btnState, int x, int y) override;
@@ -91,12 +93,14 @@ private:
 	void BuildShadersAndInputLayout(); // 指定 VS, PS, mInputLayout(顶点结构体映射到VS的输入参数)
 	void BuildPSO(); // 为 mPSO 赋值
 	void BuildFrameResources();
+	void BuildShapeGeometry();
 	void BuildShapeGeometry1();
 	void BuildRoomGeometry();
 	void BuildSkullGeometry();
 	void BuildTreeSpritesGeometry();
 	void BuildRenderItems();
 	void BuildInstanceRenderItems();
+	void BuildTestRitem();
 	void BuildSkyRenderItems();
 	void BuildSkyGeometry();
 	float GetHillsHeight(float x, float z) const;

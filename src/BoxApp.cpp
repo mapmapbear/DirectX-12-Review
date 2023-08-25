@@ -62,8 +62,8 @@ bool BoxApp::Initialize() {
 	BuildTreeSpritesGeometry();
 	BuildMaterials();
 #ifdef INSTANCE_RENDER
-	BuildInstanceRenderItems();
-	//BuildSkyRenderItems();
+	//BuildInstanceRenderItems();
+	BuildTestRitem();
 #else
 	BuildRenderItems();
 #endif
@@ -189,10 +189,11 @@ void BoxApp::UpdateObjectCBs(const GameTimer &gt) {
 void BoxApp::UpdateInstanceData(const GameTimer &gt) {
 	XMMATRIX view = mCamera.GetView();
 	XMMATRIX invView = XMMatrixInverse(get_rvalue_ptr(XMMatrixDeterminant(view)), view);
-
-	auto currInstanceBuffer = mCurrFrameResources->InstanceBuffer.get();
-	int visibleInstanceCount = 0;
+	int idx = 0;
 	for (auto &e : mAllRitems) {
+		UINT visitCount = 0;
+		auto currInstanceBuffer = mCurrFrameResources->InstanceBufferArr[idx++].get();
+		int InstanceIndex = 0;
 		const auto &instanceData = e->Instances;
 		for (UINT i = 0; i < (UINT)instanceData.size(); ++i) {
 			XMMATRIX world = XMLoadFloat4x4(&instanceData[i].World);
@@ -208,23 +209,19 @@ void BoxApp::UpdateInstanceData(const GameTimer &gt) {
 			mCamFrustum.Transform(localSpaceFrustum, viewToLocal);
 
 			// Perform the box/frustum intersection test in local space.
-			if ((localSpaceFrustum.Contains(e->Bounds) != DirectX::DISJOINT) || (mFrustumCullingEnabled == false)) {
+			//if ((localSpaceFrustum.Contains(e->Bounds) != DirectX::DISJOINT) || (mFrustumCullingEnabled == false))
+			{
 				InstanceData data;
 				XMStoreFloat4x4(&data.World, XMMatrixTranspose(world));
 				XMStoreFloat4x4(&data.TexTransform, XMMatrixTranspose(texTransform));
 				data.MaterialIndex = instanceData[i].MaterialIndex;
 
 				// Write the instance data to structured buffer for the visible objects.
-				currInstanceBuffer->CopyData(visibleInstanceCount++, data);
+				currInstanceBuffer->CopyData(InstanceIndex++, data);
 			}
+			visitCount++;
 		}
-
-		e->InstanceCount = visibleInstanceCount;
-
-		std::wostringstream outs;
-		outs.precision(6);
-		outs << L"Instancing and Culling Demo" << L"    " << e->InstanceCount << L" objects visible out of " << e->Instances.size();
-		mMainWndCaption = outs.str();
+		e->InstanceCount = visitCount;
 	}
 }
 
@@ -592,7 +589,7 @@ void BoxApp::DrawRenderItems(ID3D12GraphicsCommandList *cmdList, const std::vect
 	UINT objCBByteSize = d3dUtil::CalcConstantBufferByteSize(sizeof(ObjectConstants));
 	UINT matCBByteSize = d3dUtil::CalcConstantBufferByteSize(sizeof(MaterialConstants));
 #ifdef INSTANCE_RENDER
-	auto instanceBuffer = mCurrFrameResources->InstanceBuffer->Resource();
+	//auto instanceBuffer = mCurrFrameResources->InstanceBuffer->Resource();
 #else
 	auto objectCB = mCurrFrameResources->ObjectCB->Resource();
 #endif
@@ -609,8 +606,8 @@ void BoxApp::DrawRenderItems(ID3D12GraphicsCommandList *cmdList, const std::vect
 		D3D12_GPU_VIRTUAL_ADDRESS objCBAddress = objectCB->GetGPUVirtualAddress() + ri->ObjCBIndex * objCBByteSize;
 		#endif
 #ifdef INSTANCE_RENDER
-		cmdList->SetGraphicsRootShaderResourceView(1, instanceBuffer->GetGPUVirtualAddress());
-		cmdList->DrawIndexedInstanced(ri->IndexCount, ri->InstanceCount, ri->StartIndexLocation, ri->BaseVertexLocation, 0);
+// 		cmdList->SetGraphicsRootShaderResourceView(1, instanceBuffer->GetGPUVirtualAddress());
+// 		cmdList->DrawIndexedInstanced(ri->IndexCount, ri->InstanceCount, ri->StartIndexLocation, ri->BaseVertexLocation, 0);
 #else
 		cmdList->SetGraphicsRootConstantBufferView(1, objCBAddress);
 		cmdList->DrawIndexedInstanced(ri->IndexCount, 1, ri->StartIndexLocation, ri->BaseVertexLocation, 0);
@@ -648,17 +645,29 @@ void BoxApp::DrawRenderItems(ID3D12GraphicsCommandList *cmdList, const std::vect
 #ifdef INSTANCE_RENDER
 void BoxApp::DrawInstanceRenderItems(ID3D12GraphicsCommandList *cmdList, const std::vector<RenderItem *> &ritems) {
 	// For each render item...
+	UINT instanceBufferSize = d3dUtil::CalcConstantBufferByteSize(sizeof(InstanceData));
+	//instanceAddress += (2 * instanceBufferSize);
 	for (size_t i = 0; i < ritems.size(); ++i) {
 		auto ri = ritems[i];
+		if (ri->Name == "SkyRitem") {
+			auto instanceBuffer = mCurrFrameResources->InstanceBufferArr[0]->Resource();
+			auto instanceAddress = instanceBuffer->GetGPUVirtualAddress();
+			cmdList->IASetVertexBuffers(0, 1, get_rvalue_ptr(ri->Geo->VertexBufferView()));
+			cmdList->IASetIndexBuffer(get_rvalue_ptr(ri->Geo->IndexBufferView()));
+			cmdList->IASetPrimitiveTopology(ri->PrimitiveType);
 
-		cmdList->IASetVertexBuffers(0, 1, get_rvalue_ptr(ri->Geo->VertexBufferView()));
-		cmdList->IASetIndexBuffer(get_rvalue_ptr(ri->Geo->IndexBufferView()));
-		cmdList->IASetPrimitiveTopology(ri->PrimitiveType);
+			mCommandList->SetGraphicsRootShaderResourceView(1, instanceAddress);
+			cmdList->DrawIndexedInstanced(ri->IndexCount, ri->InstanceCount, ri->StartIndexLocation, ri->BaseVertexLocation, 0);
+		} else {
+			auto instanceBuffer = mCurrFrameResources->InstanceBufferArr[i + 1]->Resource();
+			auto instanceAddress = instanceBuffer->GetGPUVirtualAddress();
+			cmdList->IASetVertexBuffers(0, 1, get_rvalue_ptr(ri->Geo->VertexBufferView()));
+			cmdList->IASetIndexBuffer(get_rvalue_ptr(ri->Geo->IndexBufferView()));
+			cmdList->IASetPrimitiveTopology(ri->PrimitiveType);
 
-		auto instanceBuffer = mCurrFrameResources->InstanceBuffer->Resource();
-		mCommandList->SetGraphicsRootShaderResourceView(1, instanceBuffer->GetGPUVirtualAddress());
-
-		cmdList->DrawIndexedInstanced(ri->IndexCount, ri->InstanceCount, ri->StartIndexLocation, ri->BaseVertexLocation, 0);
+			mCommandList->SetGraphicsRootShaderResourceView(1, instanceAddress);
+			cmdList->DrawIndexedInstanced(ri->IndexCount, ri->InstanceCount, ri->StartIndexLocation, ri->BaseVertexLocation, 0);
+		}
 	}
 }
 
@@ -1330,11 +1339,130 @@ void BoxApp::BuildPSO() {
 void BoxApp::BuildFrameResources() {
 	for (int i = 0; i < gNumFrameResources; ++i) {
 		#ifdef INSTANCE_RENDER
-		mFrameResources.push_back(std::make_unique<FrameResource>(md3dDevice.Get(), 1, mInstanceCount, (UINT)mMaterials.size(), mWaves->VertexCount()));
+		mFrameResources.push_back(std::make_unique<FrameResource>(md3dDevice.Get(), 1, static_cast<UINT>(mAllRitems.size()), (UINT)mMaterials.size(), mWaves->VertexCount()));
 		#else
 		mFrameResources.push_back(std::make_unique<FrameResource>(md3dDevice.Get(), 2, static_cast<UINT>(mAllRitems.size()), mMaterials.size(), mWaves->VertexCount()));
 		#endif
 	}
+}
+
+void BoxApp::BuildShapeGeometry() {
+	GeometryGenerator geoGen;
+	GeometryGenerator::MeshData box = geoGen.CreateBox(1.0f, 1.0f, 1.0f, 3);
+	GeometryGenerator::MeshData grid = geoGen.CreateGrid(20.0f, 30.0f, 60, 40);
+	GeometryGenerator::MeshData sphere = geoGen.CreateSphere(0.5f, 20, 20);
+	GeometryGenerator::MeshData cylinder = geoGen.CreateCylinder(0.5f, 0.3f, 3.0f, 20, 20);
+
+	//
+	// We are concatenating all the geometry into one big vertex/index buffer.  So
+	// define the regions in the buffer each submesh covers.
+	//
+
+	// Cache the vertex offsets to each object in the concatenated vertex buffer.
+	UINT boxVertexOffset = 0;
+	UINT gridVertexOffset = (UINT)box.Vertices.size();
+	UINT sphereVertexOffset = gridVertexOffset + (UINT)grid.Vertices.size();
+	UINT cylinderVertexOffset = sphereVertexOffset + (UINT)sphere.Vertices.size();
+
+	// Cache the starting index for each object in the concatenated index buffer.
+	UINT boxIndexOffset = 0;
+	UINT gridIndexOffset = (UINT)box.Indices32.size();
+	UINT sphereIndexOffset = gridIndexOffset + (UINT)grid.Indices32.size();
+	UINT cylinderIndexOffset = sphereIndexOffset + (UINT)sphere.Indices32.size();
+
+	SubmeshGeometry boxSubmesh;
+	boxSubmesh.IndexCount = (UINT)box.Indices32.size();
+	boxSubmesh.StartIndexLocation = boxIndexOffset;
+	boxSubmesh.BaseVertexLocation = boxVertexOffset;
+
+	SubmeshGeometry gridSubmesh;
+	gridSubmesh.IndexCount = (UINT)grid.Indices32.size();
+	gridSubmesh.StartIndexLocation = gridIndexOffset;
+	gridSubmesh.BaseVertexLocation = gridVertexOffset;
+
+	SubmeshGeometry sphereSubmesh;
+	sphereSubmesh.IndexCount = (UINT)sphere.Indices32.size();
+	sphereSubmesh.StartIndexLocation = sphereIndexOffset;
+	sphereSubmesh.BaseVertexLocation = sphereVertexOffset;
+
+	SubmeshGeometry cylinderSubmesh;
+	cylinderSubmesh.IndexCount = (UINT)cylinder.Indices32.size();
+	cylinderSubmesh.StartIndexLocation = cylinderIndexOffset;
+	cylinderSubmesh.BaseVertexLocation = cylinderVertexOffset;
+
+	//
+	// Extract the vertex elements we are interested in and pack the
+	// vertices of all the meshes into one vertex buffer.
+	//
+
+	auto totalVertexCount =
+			box.Vertices.size() +
+			grid.Vertices.size() +
+			sphere.Vertices.size() +
+			cylinder.Vertices.size();
+
+	std::vector<Vertex> vertices(totalVertexCount);
+
+	UINT k = 0;
+	for (size_t i = 0; i < box.Vertices.size(); ++i, ++k) {
+		vertices[k].Pos = box.Vertices[i].Position;
+		vertices[k].Normal = box.Vertices[i].Normal;
+		vertices[k].UV0 = box.Vertices[i].TexC;
+	}
+
+	for (size_t i = 0; i < grid.Vertices.size(); ++i, ++k) {
+		vertices[k].Pos = grid.Vertices[i].Position;
+		vertices[k].Normal = grid.Vertices[i].Normal;
+		vertices[k].UV0 = grid.Vertices[i].TexC;
+	}
+
+	for (size_t i = 0; i < sphere.Vertices.size(); ++i, ++k) {
+		vertices[k].Pos = sphere.Vertices[i].Position;
+		vertices[k].Normal = sphere.Vertices[i].Normal;
+		vertices[k].UV0 = sphere.Vertices[i].TexC;
+	}
+
+	for (size_t i = 0; i < cylinder.Vertices.size(); ++i, ++k) {
+		vertices[k].Pos = cylinder.Vertices[i].Position;
+		vertices[k].Normal = cylinder.Vertices[i].Normal;
+		vertices[k].UV0 = cylinder.Vertices[i].TexC;
+	}
+
+	std::vector<std::uint16_t> indices;
+	indices.insert(indices.end(), std::begin(box.GetIndices16()), std::end(box.GetIndices16()));
+	indices.insert(indices.end(), std::begin(grid.GetIndices16()), std::end(grid.GetIndices16()));
+	indices.insert(indices.end(), std::begin(sphere.GetIndices16()), std::end(sphere.GetIndices16()));
+	indices.insert(indices.end(), std::begin(cylinder.GetIndices16()), std::end(cylinder.GetIndices16()));
+
+	const UINT vbByteSize = (UINT)vertices.size() * sizeof(Vertex);
+	const UINT ibByteSize = (UINT)indices.size() * sizeof(std::uint16_t);
+
+	auto geo = std::make_unique<MeshGeometry>();
+	geo->Name = "shapeGeo";
+
+	ThrowIfFailed(D3DCreateBlob(vbByteSize, &geo->VertexBufferCPU));
+	CopyMemory(geo->VertexBufferCPU->GetBufferPointer(), vertices.data(), vbByteSize);
+
+	ThrowIfFailed(D3DCreateBlob(ibByteSize, &geo->IndexBufferCPU));
+	CopyMemory(geo->IndexBufferCPU->GetBufferPointer(), indices.data(), ibByteSize);
+
+	geo->VertexBufferGPU = d3dUtil::CreateDefaultBuffer(md3dDevice.Get(),
+			mCommandList.Get(), vertices.data(), vbByteSize, geo->VertexBufferUploader);
+
+	geo->IndexBufferGPU = d3dUtil::CreateDefaultBuffer(md3dDevice.Get(),
+			mCommandList.Get(), indices.data(), ibByteSize, geo->IndexBufferUploader);
+
+	geo->VertexByteStride = sizeof(Vertex);
+	geo->VertexBufferByteSize = vbByteSize;
+	geo->IndexFormat = DXGI_FORMAT_R16_UINT;
+	geo->IndexBufferByteSize = ibByteSize;
+
+	geo->DrawArgs["box"] = boxSubmesh;
+	geo->DrawArgs["grid"] = gridSubmesh;
+	geo->DrawArgs["sphere"] = sphereSubmesh;
+	geo->DrawArgs["cylinder"] = cylinderSubmesh;
+
+	mGeometries[geo->Name] = std::move(geo);
 }
 
 void BoxApp::BuildShapeGeometry1() {
@@ -2045,7 +2173,6 @@ void BoxApp::BuildInstanceRenderItems() {
 	mRitemLayer[static_cast<int>(RenderLayer::Sky)].push_back(skyRitem.get());
 	mAllRitems.push_back(std::move(skyRitem));
 
-
 	// Generate instance data.
 	const int n = 5;
 	mInstanceCount = n * n * n;
@@ -2079,10 +2206,160 @@ void BoxApp::BuildInstanceRenderItems() {
 	}
 	
 	mAllRitems.push_back(std::move(skullRitem));
+}
 
-	// All the render items are opaque.
-// 	for (auto &e : mAllRitems)
-// 		mRitemLayer[static_cast<int>(RenderLayer::Opaque)].push_back(e.get());
+void BoxApp::BuildTestRitem()
+{
+	auto skyRitem = std::make_unique<RenderItem>();
+	skyRitem->World = MathHelper::Identity4x4();
+	XMStoreFloat4x4(&skyRitem->World, XMMatrixScaling(5000.0f, 5000.0f, 5000.0f));
+	skyRitem->TexTransform = MathHelper::Identity4x4();
+	skyRitem->Name = "SkyRitem";
+	skyRitem->ObjCBIndex = 0;
+	skyRitem->Mat = mMaterials["skyMat"].get();
+	skyRitem->Geo = mGeometries["shapeGeo"].get();
+	skyRitem->PrimitiveType = D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
+	skyRitem->InstanceCount = 1;
+	skyRitem->IndexCount = skyRitem->Geo->DrawArgs["sphere"].IndexCount;
+	skyRitem->StartIndexLocation = skyRitem->Geo->DrawArgs["sphere"].StartIndexLocation;
+	skyRitem->BaseVertexLocation = skyRitem->Geo->DrawArgs["sphere"].BaseVertexLocation;
+	skyRitem->Bounds = skyRitem->Geo->DrawArgs["sphere"].Bounds;
+	skyRitem->Instances.resize(skyRitem->InstanceCount);
+	for (int i = 0; i < skyRitem->InstanceCount; ++i) {
+		skyRitem->Instances[i].World = XMFLOAT4X4(
+				9999.0f, 0.0, 0.0f, 0.0f,
+				0.0f, 9999.0f, 0.0f, 0.0f,
+				0.0f, 0.0f, 9999.0f, 0.0f,
+				0.0f, 0.0f, 0.0f, 1.0f);
+
+		XMStoreFloat4x4(&skyRitem->Instances[i].TexTransform, XMMatrixScaling(1.0f, 1.0f, 1.0f));
+		skyRitem->Instances[i].MaterialIndex = 7;
+	}
+	mRitemLayer[static_cast<int>(RenderLayer::Sky)].push_back(skyRitem.get());
+	mAllRitems.push_back(std::move(skyRitem));
+
+	UINT objCBIndex = 1;
+	auto boxRitem = std::make_unique<RenderItem>();
+	boxRitem->World = MathHelper::Identity4x4();
+	boxRitem->TexTransform = MathHelper::Identity4x4();
+	boxRitem->Name = "boxRitem";
+	boxRitem->ObjCBIndex = objCBIndex++;
+	boxRitem->Mat = mMaterials["grass"].get();
+	boxRitem->Geo = mGeometries["shapeGeo"].get();
+	boxRitem->PrimitiveType = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
+	boxRitem->InstanceCount = 1;
+	boxRitem->IndexCount = boxRitem->Geo->DrawArgs["box"].IndexCount;
+	boxRitem->StartIndexLocation = boxRitem->Geo->DrawArgs["box"].StartIndexLocation;
+	boxRitem->BaseVertexLocation = boxRitem->Geo->DrawArgs["box"].BaseVertexLocation;
+	//boxRitem->Bounds = boxRitem->Geo->DrawArgs["box"].Bounds;
+	mRitemLayer[static_cast<int>(RenderLayer::Opaque)].push_back(boxRitem.get());
+	boxRitem->Instances.resize(1);
+	boxRitem->Instances[0].World = MathHelper::Identity4x4();
+	boxRitem->Instances[0].TexTransform = MathHelper::Identity4x4();
+	boxRitem->Instances[0].MaterialIndex = 3;
+	boxRitem->Instances[0].World = XMFLOAT4X4(
+			1.0f, 0.0f, 0.0f, 0.0f,
+			0.0f, 1.0f, 0.0f, 0.0f,
+			0.0f, 0.0f, 1.0f, 0.0f,
+			0.0f, -2.5f, 0.0f, 1.0f);
+
+	auto gridItem = std::make_unique<RenderItem>();
+	gridItem->World = MathHelper::Identity4x4();
+	gridItem->TexTransform = MathHelper::Identity4x4();
+	gridItem->Name = "gridRitem";
+	gridItem->ObjCBIndex = objCBIndex++;
+	gridItem->Mat = mMaterials["stone"].get();
+	gridItem->Geo = mGeometries["shapeGeo"].get();
+	gridItem->PrimitiveType = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
+	gridItem->InstanceCount = 1;
+	gridItem->IndexCount = gridItem->Geo->DrawArgs["grid"].IndexCount;
+	gridItem->StartIndexLocation = gridItem->Geo->DrawArgs["grid"].StartIndexLocation;
+	gridItem->BaseVertexLocation = gridItem->Geo->DrawArgs["grid"].BaseVertexLocation;
+	gridItem->Bounds = gridItem->Geo->DrawArgs["grid"].Bounds;
+	mRitemLayer[static_cast<int>(RenderLayer::Opaque)].push_back(gridItem.get());
+	gridItem->Instances.resize(1);
+	gridItem->Instances[0].World = MathHelper::Identity4x4();
+	gridItem->Instances[0].TexTransform = MathHelper::Identity4x4();
+	gridItem->Instances[0].MaterialIndex = 1;
+	gridItem->Instances[0].World = XMFLOAT4X4(
+			1.0f, 0.0f, 0.0f, 0.0f,
+			0.0f, 1.0f, 0.0f, 0.0f,
+			0.0f, 0.0f, 1.0f, 0.0f,
+			0.0f, -2.8f, 0.0f, 1.0f);
+
+	auto CylRitem = std::make_unique<RenderItem>();
+	CylRitem->World = MathHelper::Identity4x4();
+	CylRitem->TexTransform = MathHelper::Identity4x4();
+	CylRitem->Name = "cylinder";
+	CylRitem->ObjCBIndex = objCBIndex++;
+	CylRitem->Mat = mMaterials["stone"].get();
+	CylRitem->Geo = mGeometries["shapeGeo"].get();
+	CylRitem->PrimitiveType = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
+	CylRitem->InstanceCount = 10;
+	CylRitem->IndexCount = CylRitem->Geo->DrawArgs["cylinder"].IndexCount;
+	CylRitem->StartIndexLocation = CylRitem->Geo->DrawArgs["cylinder"].StartIndexLocation;
+	CylRitem->BaseVertexLocation = CylRitem->Geo->DrawArgs["cylinder"].BaseVertexLocation;
+	//CylRitem->Bounds = CylRitem->Geo->DrawArgs["cylinder"].Bounds;
+	mRitemLayer[static_cast<int>(RenderLayer::Opaque)].push_back(CylRitem.get());
+
+	auto SphereRitem = std::make_unique<RenderItem>();
+	SphereRitem->World = MathHelper::Identity4x4();
+	SphereRitem->TexTransform = MathHelper::Identity4x4();
+	SphereRitem->Name = "sphereRitem";
+	SphereRitem->ObjCBIndex = objCBIndex++;
+	SphereRitem->Mat = mMaterials["bricks"].get();
+	SphereRitem->Geo = mGeometries["shapeGeo"].get();
+	SphereRitem->PrimitiveType = D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
+	SphereRitem->InstanceCount = 10;
+	SphereRitem->IndexCount = SphereRitem->Geo->DrawArgs["sphere"].IndexCount;
+	SphereRitem->StartIndexLocation = SphereRitem->Geo->DrawArgs["sphere"].StartIndexLocation;
+	SphereRitem->BaseVertexLocation = SphereRitem->Geo->DrawArgs["sphere"].BaseVertexLocation;
+	//SphereRitem->Bounds = SphereRitem->Geo->DrawArgs["box"].Bounds;
+
+	mRitemLayer[static_cast<int>(RenderLayer::Opaque)].push_back(SphereRitem.get());
+
+	SphereRitem->Instances.resize(SphereRitem->InstanceCount);
+	CylRitem->Instances.resize(CylRitem->InstanceCount);
+
+	mInstanceCount = 100;
+
+	for (int i = 0; i < 10; i++) {
+		if(i < 5) {
+			CylRitem->Instances[i].World = XMFLOAT4X4(
+					1.0f, 0.0f, 0.0f, 0.0f,
+					0.0f, 1.0f, 0.0f, 0.0f,
+					0.0f, 0.0f, 1.0f, 0.0f,
+					-5.0f, 0.0f, -10.0f + i * 5.0f, 1.0f);
+
+			SphereRitem->Instances[i].World = XMFLOAT4X4(
+					1.0f, 0.0f, 0.0f, 0.0f,
+					0.0f, 1.0f, 0.0f, 0.0f,
+					0.0f, 0.0f, 1.0f, 0.0f,
+					-5.0f, -1.5f, -10.0f + i * 5.0f, 1.0f);
+
+		} else {
+			int idx = i - 5;
+			CylRitem->Instances[i].World = XMFLOAT4X4(
+					1.0f, 0.0f, 0.0f, 0.0f,
+					0.0f, 1.0f, 0.0f, 0.0f,
+					0.0f, 0.0f, 1.0f, 0.0f,
+					5.0f, 0.0f, -10.0f + idx * 5.0f, 1.0f);
+			SphereRitem->Instances[i].World = XMFLOAT4X4(
+					1.0f, 0.0f, 0.0f, 0.0f,
+					0.0f, 1.0f, 0.0f, 0.0f,
+					0.0f, 0.0f, 1.0f, 0.0f,
+					5.0f, -1.5f, -10.0f + idx * 5.0f, 1.0f);
+		}
+
+		SphereRitem->Instances[i].TexTransform = MathHelper::Identity4x4();
+		SphereRitem->Instances[i].MaterialIndex = 6;
+		CylRitem->Instances[i].TexTransform = MathHelper::Identity4x4();
+		CylRitem->Instances[i].MaterialIndex = 6;
+	}
+	mAllRitems.push_back(std::move(boxRitem));
+	mAllRitems.push_back(std::move(gridItem));
+	mAllRitems.push_back(std::move(SphereRitem));
+	mAllRitems.push_back(std::move(CylRitem));
 }
 
 void BoxApp::BuildSkyRenderItems() {
