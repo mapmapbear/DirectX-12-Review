@@ -2261,7 +2261,7 @@ void BoxApp::BuildTestRitem()
 			1.0f, 0.0f, 0.0f, 0.0f,
 			0.0f, 1.0f, 0.0f, 0.0f,
 			0.0f, 0.0f, 1.0f, 0.0f,
-			0.0f, -2.5f, 0.0f, 1.0f);
+			0.0f, 0.0f, 0.0f, 1.0f);
 
 	auto gridItem = std::make_unique<RenderItem>();
 	gridItem->World = MathHelper::Identity4x4();
@@ -2285,7 +2285,31 @@ void BoxApp::BuildTestRitem()
 			1.0f, 0.0f, 0.0f, 0.0f,
 			0.0f, 1.0f, 0.0f, 0.0f,
 			0.0f, 0.0f, 1.0f, 0.0f,
-			0.0f, -2.8f, 0.0f, 1.0f);
+			0.0f, 0.0f, 0.0f, 1.0f);
+
+	auto skullRitem = std::make_unique<RenderItem>();
+	skullRitem->World = MathHelper::Identity4x4();
+	skullRitem->TexTransform = MathHelper::Identity4x4();
+	skullRitem->Name = "skullRitem";
+	skullRitem->ObjCBIndex = 0;
+	skullRitem->Mat = mMaterials["grass"].get();
+	skullRitem->Geo = mGeometries["skullGeo"].get();
+	skullRitem->PrimitiveType = D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
+	skullRitem->InstanceCount = 1;
+	skullRitem->IndexCount = skullRitem->Geo->DrawArgs["skull"].IndexCount;
+	skullRitem->StartIndexLocation = skullRitem->Geo->DrawArgs["skull"].StartIndexLocation;
+	skullRitem->BaseVertexLocation = skullRitem->Geo->DrawArgs["skull"].BaseVertexLocation;
+	skullRitem->Bounds = skullRitem->Geo->DrawArgs["skull"].Bounds;
+	mRitemLayer[static_cast<int>(RenderLayer::Opaque)].push_back(skullRitem.get());
+	skullRitem->Instances.resize(1);
+	skullRitem->Instances[0].World = MathHelper::Identity4x4();
+	skullRitem->Instances[0].TexTransform = MathHelper::Identity4x4();
+	skullRitem->Instances[0].MaterialIndex = 4;
+	skullRitem->Instances[0].World = XMFLOAT4X4(
+			0.3f, 0.0f, 0.0f, 0.0f,
+			0.0f, 0.3f, 0.0f, 0.0f, 
+			0.0f, 0.0f, 0.3f, 0.0f,
+			0.0f, 1.5f, 0.0f, 1.0f);
 
 	auto CylRitem = std::make_unique<RenderItem>();
 	CylRitem->World = MathHelper::Identity4x4();
@@ -2314,14 +2338,10 @@ void BoxApp::BuildTestRitem()
 	SphereRitem->IndexCount = SphereRitem->Geo->DrawArgs["sphere"].IndexCount;
 	SphereRitem->StartIndexLocation = SphereRitem->Geo->DrawArgs["sphere"].StartIndexLocation;
 	SphereRitem->BaseVertexLocation = SphereRitem->Geo->DrawArgs["sphere"].BaseVertexLocation;
-	//SphereRitem->Bounds = SphereRitem->Geo->DrawArgs["box"].Bounds;
-
 	mRitemLayer[static_cast<int>(RenderLayer::Opaque)].push_back(SphereRitem.get());
 
 	SphereRitem->Instances.resize(SphereRitem->InstanceCount);
 	CylRitem->Instances.resize(CylRitem->InstanceCount);
-
-	mInstanceCount = 100;
 
 	for (int i = 0; i < 10; i++) {
 		if(i < 5) {
@@ -2329,13 +2349,13 @@ void BoxApp::BuildTestRitem()
 					1.0f, 0.0f, 0.0f, 0.0f,
 					0.0f, 1.0f, 0.0f, 0.0f,
 					0.0f, 0.0f, 1.0f, 0.0f,
-					-5.0f, 0.0f, -10.0f + i * 5.0f, 1.0f);
+					-5.0f, 1.0f, -10.0f + i * 5.0f, 1.0f);
 
 			SphereRitem->Instances[i].World = XMFLOAT4X4(
 					1.0f, 0.0f, 0.0f, 0.0f,
 					0.0f, 1.0f, 0.0f, 0.0f,
 					0.0f, 0.0f, 1.0f, 0.0f,
-					-5.0f, -1.5f, -10.0f + i * 5.0f, 1.0f);
+					-5.0f, 2.5f, -10.0f + i * 5.0f, 1.0f);
 
 		} else {
 			int idx = i - 5;
@@ -2343,23 +2363,24 @@ void BoxApp::BuildTestRitem()
 					1.0f, 0.0f, 0.0f, 0.0f,
 					0.0f, 1.0f, 0.0f, 0.0f,
 					0.0f, 0.0f, 1.0f, 0.0f,
-					5.0f, 0.0f, -10.0f + idx * 5.0f, 1.0f);
+					5.0f, 1.0, -10.0f + idx * 5.0f, 1.0f);
 			SphereRitem->Instances[i].World = XMFLOAT4X4(
 					1.0f, 0.0f, 0.0f, 0.0f,
 					0.0f, 1.0f, 0.0f, 0.0f,
 					0.0f, 0.0f, 1.0f, 0.0f,
-					5.0f, -1.5f, -10.0f + idx * 5.0f, 1.0f);
+					5.0f, 2.5f, -10.0f + idx * 5.0f, 1.0f);
 		}
 
 		SphereRitem->Instances[i].TexTransform = MathHelper::Identity4x4();
 		SphereRitem->Instances[i].MaterialIndex = 6;
 		CylRitem->Instances[i].TexTransform = MathHelper::Identity4x4();
-		CylRitem->Instances[i].MaterialIndex = 6;
+		CylRitem->Instances[i].MaterialIndex = 4;
 	}
 	mAllRitems.push_back(std::move(boxRitem));
 	mAllRitems.push_back(std::move(gridItem));
-	mAllRitems.push_back(std::move(SphereRitem));
+	mAllRitems.push_back(std::move(skullRitem));
 	mAllRitems.push_back(std::move(CylRitem));
+	mAllRitems.push_back(std::move(SphereRitem));
 }
 
 void BoxApp::BuildSkyRenderItems() {
@@ -2467,15 +2488,15 @@ void BoxApp::BuildMaterials() {
 	icemirror->MatCBIndex = 3;
 	icemirror->DiffuseAlbedo = XMFLOAT4(1.0f, 1.0f, 1.0f, 0.3f);
 	icemirror->FresnelR0 = XMFLOAT3(0.1f, 0.1f, 0.1f);
-	icemirror->Roughness = 0.5f;
+	icemirror->Roughness = 1.0f;
 	icemirror->DiffuseSrvHeapIndex = 4;
 
 	auto skullMat = std::make_unique<Material>();
 	skullMat->Name = "skullMat";
 	skullMat->MatCBIndex = 4;
 	skullMat->DiffuseAlbedo = XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f);
-	skullMat->FresnelR0 = XMFLOAT3(0.05f, 0.05f, 0.05f);
-	skullMat->Roughness = 0.3f;
+	skullMat->FresnelR0 = XMFLOAT3(0.01f, 0.01f, 0.01f);
+	skullMat->Roughness = 0.01f;
 	skullMat->DiffuseSrvHeapIndex = 5;
 
 	auto bricks = std::make_unique<Material>();
