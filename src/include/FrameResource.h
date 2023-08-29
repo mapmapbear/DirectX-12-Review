@@ -67,7 +67,7 @@ struct MaterialData {
 	DirectX::XMFLOAT4X4 MatTransform = MathHelper::Identity4x4();
 
 	UINT DiffuseMapIndex = 0;
-	UINT MaterialPad0;
+	UINT NormalMapIndex = 0;
 	UINT MaterialPad1;
 	UINT MaterialPad2;
 };
@@ -83,6 +83,7 @@ struct Vertex
 	DirectX::XMFLOAT3 Pos;
 	DirectX::XMFLOAT3 Normal;
 	DirectX::XMFLOAT2 UV0;
+	DirectX::XMFLOAT3 Tangent;
 };
 
 // Stores the resources needed for the CPU to build the command lists

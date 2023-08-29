@@ -21,6 +21,7 @@ struct VertexIn {
 	float3 PosL : POSITION;
 	float4 NormalL : NORMAL;
 	float2 UV0 : TEXCOORD;
+    float3 Tangent : TANGENT;
 };
 
 struct VertexOut {
@@ -30,6 +31,7 @@ struct VertexOut {
 	float3 PosW : POSITION;
 	float3 NormalW : NORMAL;
 	float2 UV0 : TEXCOORD;
+    float3 TangentW : TANGENT;
 #ifdef INSTANCE_RENDER
 	nointerpolation uint MatIndex  : MATINDEX;
 #endif
@@ -55,7 +57,8 @@ VertexOut VS(VertexIn vin) {
 	// 转换到齐次裁剪空间
 	vout.PosH = mul(posW, gCBPass.gViewProj);
 	vout.PosW = posW.xyz;
-	vout.NormalW = mul(vin.NormalL, world).xyz;
+    vout.NormalW = mul(vin.NormalL, (float3x3) world);
+    vout.TangentW = mul(vin.Tangent, (float3x3) world);
 #ifdef DYNAMIC_RESOURCES
 	#ifndef INSTANCE_RENDER
 	MaterialData matData = gMaterialData[gCBPerObject.gMaterialDataIndex];
@@ -84,18 +87,22 @@ float4 PS(VertexOut pin) : SV_Target
     float3 fresnelR0 = matData.gFresnelR0;
     float roughness = matData.gRoughness;
     uint diffuseTexIndex = matData.gDiffuseMapIndex;
-	
+	uint normalTexIndex = matData.gNormalMapIndex;
+
     //在数组中动态地查找纹理
     diffuseAlbedo *= gDiffuseMap[diffuseTexIndex].Sample(gsamAnisotropicWrap, pin.UV0);
+	float4 normalMap = gDiffuseMap[normalTexIndex].Sample(gsamAnisotropicWrap, pin.UV0);
+	float3 bumpNormalW = NormalSampleToWorldSpace(normalMap.rgb, pin.NormalW, pin.TangentW);
     #ifdef ALPHA_TEST
 	clip(diffuseAlbedo.a - 0.1f);
 	#endif
-    float3 worldNormal = normalize(pin.NormalW);
+    float3 worldNormal = normalize(bumpNormalW);
     float3 worldView = normalize(gCBPass.gEyePosW - pin.PosW);
 	float smoothness = 1.0f - roughness;
 	float3 r = reflect(-worldView, pin.NormalW);
 	float3 fresnelFactor = SchlickFresnel(fresnelR0, pin.NormalW, r);
 	float4 reflectionColor = gCubeMap.Sample(gsamLinearWrap, r);
+	
     Material mat = { diffuseAlbedo, fresnelR0, roughness };
     float3 shadowFactor = 1.0f;//暂时使用1.0，不对计算产生影响
     float4 directLight = ComputeLighting(gCBPass.gLights, mat, pin.PosW, worldNormal, worldView, shadowFactor);
@@ -104,7 +111,6 @@ float4 PS(VertexOut pin) : SV_Target
     float4 finalCol = ambient + diffuse;
 	finalCol.rgb += (reflectionColor.rgb * fresnelFactor * smoothness);
     finalCol.a = diffuseAlbedo.a;
-
     return finalCol;
 }
 #else

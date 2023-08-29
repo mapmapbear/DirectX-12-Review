@@ -94,7 +94,7 @@ private:
 	void BuildPSO(); // 为 mPSO 赋值
 	void BuildFrameResources();
 	void BuildShapeGeometry();
-	void BuildShapeGeometry1();
+	//void BuildShapeGeometry1();
 	void BuildRoomGeometry();
 	void BuildSkullGeometry();
 	void BuildTreeSpritesGeometry();
