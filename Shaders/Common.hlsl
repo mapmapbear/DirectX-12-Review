@@ -65,6 +65,7 @@ struct cbPass
     float gTotalTime;
     float gDeltaTime;
     float4 gAmbientLight;
+    float4x4 gShadowTransform;
     Light gLights[MaxLights];
     float4 g_Color;
     float g_UseCustomColor;

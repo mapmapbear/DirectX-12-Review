@@ -39,8 +39,11 @@ BoxApp::~BoxApp() {
 bool BoxApp::Initialize() {
 	if (!D3DApp::Initialize())
 		return false;
+	mSceneBounds.Center = XMFLOAT3(0.0f, 0.0f, 0.0f);
+	mSceneBounds.Radius = sqrtf(10.0f * 10.0f + 15.0f * 15.0f);
 	mCbvSrvDescriptorSize = md3dDevice->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-
+	mShadowMap = std::make_unique<ShadowMap>(
+			md3dDevice.Get(), 2048, 2048);
 	needBlur = true;
 	blurCount = 2;
 
@@ -105,6 +108,16 @@ void BoxApp::Update(const GameTimer &gt) {
 		WaitForSingleObject(eventHandle, INFINITE);
 		CloseHandle(eventHandle);
 	}
+
+	mLightRotationAngle += 0.1f * gt.DeltaTime();
+
+	XMMATRIX R = XMMatrixRotationY(mLightRotationAngle);
+	for (int i = 0; i < 3; ++i) {
+		XMVECTOR lightDir = XMLoadFloat3(&mBaseLightDirections[i]);
+		lightDir = XMVector3TransformNormal(lightDir, R);
+		XMStoreFloat3(&mRotatedLightDirections[i], lightDir);
+	}
+
 #ifndef __IMGUI
 	UpdateImGui(gt, mMainPassCB);
 #endif
@@ -115,9 +128,11 @@ void BoxApp::Update(const GameTimer &gt) {
 #else
 	UpdateInstanceData(gt);
 #endif
-	UpdateMainPassCB(gt);
 	UpdateReflectedPassCB(gt);
 	UpdateMaterialCBs(gt);
+	UpdateShadowPassCB(gt);
+	UpdateMainPassCB(gt);
+	UpdateShadowTransform(gt);
 }
 
 #ifndef __IMGUI
@@ -235,13 +250,14 @@ void BoxApp::UpdateMainPassCB(const GameTimer &gt) {
 	XMMATRIX invView = XMMatrixInverse(get_rvalue_ptr(XMMatrixDeterminant(view)), view);
 	XMMATRIX invProj = XMMatrixInverse(get_rvalue_ptr(XMMatrixDeterminant(proj)), proj);
 	XMMATRIX invViewProj = XMMatrixInverse(get_rvalue_ptr(XMMatrixDeterminant(viewProj)), viewProj);
-
+	XMMATRIX shadowTransform = XMLoadFloat4x4(&mShadowTransform);
 	XMStoreFloat4x4(&mMainPassCB.View, XMMatrixTranspose(view));
 	XMStoreFloat4x4(&mMainPassCB.InvView, XMMatrixTranspose(invView));
 	XMStoreFloat4x4(&mMainPassCB.Proj, XMMatrixTranspose(proj));
 	XMStoreFloat4x4(&mMainPassCB.InvProj, XMMatrixTranspose(invProj));
 	XMStoreFloat4x4(&mMainPassCB.ViewProj, XMMatrixTranspose(viewProj));
 	XMStoreFloat4x4(&mMainPassCB.InvViewProj, XMMatrixTranspose(invViewProj));
+	XMStoreFloat4x4(&mMainPassCB.ShadowTransform, XMMatrixTranspose(shadowTransform));
 	mMainPassCB.EyePosW = mCamera.GetPosition3f();
 	mMainPassCB.RenderTargetSize = XMFLOAT2(static_cast<float>(mClientWidth), static_cast<float>(mClientHeight));
 	mMainPassCB.InvRenderTargetSize = XMFLOAT2(1.0f / mClientWidth, 1.0f / mClientHeight);
@@ -250,15 +266,85 @@ void BoxApp::UpdateMainPassCB(const GameTimer &gt) {
 	mMainPassCB.TotalTime = gt.TotalTime();
 	mMainPassCB.DeltaTime = gt.DeltaTime();
 	mMainPassCB.AmbientLight = { 0.25f, 0.25f, 0.35f, 1.0f };
-	mMainPassCB.Lights[0].Direction = { 0.57735f, -0.57735f, 0.57735f };
+	mMainPassCB.Lights[0].Direction = mRotatedLightDirections[0];
 	mMainPassCB.Lights[0].Strength = { 0.6f, 0.6f, 0.6f };
-	mMainPassCB.Lights[1].Direction = { -0.57735f, -0.57735f, 0.57735f };
+	mMainPassCB.Lights[1].Direction = mRotatedLightDirections[1];
 	mMainPassCB.Lights[1].Strength = { 0.3f, 0.3f, 0.3f };
-	mMainPassCB.Lights[2].Direction = { 0.0f, -0.707f, -0.707f };
+	mMainPassCB.Lights[2].Direction = mRotatedLightDirections[2];
 	mMainPassCB.Lights[2].Strength = { 0.15f, 0.15f, 0.15f };
 
 	auto currPassCB = mCurrFrameResources->PassCB.get();
 	currPassCB->CopyData(0, mMainPassCB);
+}
+
+void BoxApp::UpdateShadowTransform(const GameTimer &gt) {
+	XMVECTOR lightDir = XMLoadFloat3(&mRotatedLightDirections[0]);
+	XMVECTOR lightPos = XMVectorScale(lightDir, (mSceneBounds.Radius * -2.0f));
+	XMVECTOR targetPos = XMLoadFloat3(&mSceneBounds.Center);
+	XMVECTOR lightUp = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
+	// WorldToLight矩阵 （世界空间转灯光空间）
+	XMMATRIX lightView = XMMatrixLookAtLH(lightPos, targetPos, lightUp);
+
+	XMStoreFloat3(&mLightPosW, lightPos); //灯光坐标
+
+	// 将包围球变换到光源空间
+	XMFLOAT3 sphereCenterLS;
+	XMStoreFloat3(&sphereCenterLS, XMVector3TransformCoord(targetPos, lightView));
+
+	// 位于光源空间中包围场景的正交投影视景体
+	float l = sphereCenterLS.x - mSceneBounds.Radius; //左端点
+	float b = sphereCenterLS.y - mSceneBounds.Radius; //下端点
+	float n = sphereCenterLS.z - mSceneBounds.Radius; //近端点
+	float r = sphereCenterLS.x + mSceneBounds.Radius; //右端点
+	float t = sphereCenterLS.y + mSceneBounds.Radius; //上端点
+	float f = sphereCenterLS.z + mSceneBounds.Radius; //远端点
+
+	mLightNearZ = n; //近裁剪面距离
+	mLightFarZ = f; //远裁剪面距离
+	//构建LightToProject矩阵（灯光空间转NDC空间）
+	XMMATRIX lightProj = XMMatrixOrthographicOffCenterLH(l, r, b, t, n, f);
+
+	// 构建NDCToTexture矩阵（NDC空间转纹理空间）
+	// 从[-1, 1]转到[0, 1]
+	XMMATRIX T(
+			0.5f, 0.0f, 0.0f, 0.0f,
+			0.0f, -0.5f, 0.0f, 0.0f,
+			0.0f, 0.0f, 1.0f, 0.0f,
+			0.5f, 0.5f, 0.0f, 1.0f);
+
+	// 构建LightToTexture（灯光空间转纹理空间）
+	XMMATRIX S = lightView * lightProj * T;
+	XMStoreFloat4x4(&mLightView, lightView);
+	XMStoreFloat4x4(&mLightProj, lightProj);
+	XMStoreFloat4x4(&mShadowTransform, S);
+}
+
+void BoxApp::UpdateShadowPassCB(const GameTimer& gt) {
+	XMMATRIX view = XMLoadFloat4x4(&mLightView);
+	XMMATRIX proj = XMLoadFloat4x4(&mLightProj);
+
+	XMMATRIX viewProj = XMMatrixMultiply(view, proj);
+	XMMATRIX invView = XMMatrixInverse(get_rvalue_ptr(XMMatrixDeterminant(view)), view);
+	XMMATRIX invProj = XMMatrixInverse(get_rvalue_ptr(XMMatrixDeterminant(proj)), proj);
+	XMMATRIX invViewProj = XMMatrixInverse(get_rvalue_ptr(XMMatrixDeterminant(viewProj)), viewProj);
+
+	UINT w = mShadowMap->Width();
+	UINT h = mShadowMap->Height();
+
+	XMStoreFloat4x4(&mShadowPassCB.View, XMMatrixTranspose(view));
+	XMStoreFloat4x4(&mShadowPassCB.InvView, XMMatrixTranspose(invView));
+	XMStoreFloat4x4(&mShadowPassCB.Proj, XMMatrixTranspose(proj));
+	XMStoreFloat4x4(&mShadowPassCB.InvProj, XMMatrixTranspose(invProj));
+	XMStoreFloat4x4(&mShadowPassCB.ViewProj, XMMatrixTranspose(viewProj));
+	XMStoreFloat4x4(&mShadowPassCB.InvViewProj, XMMatrixTranspose(invViewProj));
+	mShadowPassCB.EyePosW = mLightPosW;
+	mShadowPassCB.RenderTargetSize = XMFLOAT2((float)w, (float)h);
+	mShadowPassCB.InvRenderTargetSize = XMFLOAT2(1.0f / w, 1.0f / h);
+	mShadowPassCB.NearZ = mLightNearZ;
+	mShadowPassCB.FarZ = mLightFarZ;
+
+	auto currPassCB = mCurrFrameResources->PassCB.get();
+	currPassCB->CopyData(1, mShadowPassCB);
 }
 
 void BoxApp::UpdateReflectedPassCB(const GameTimer &gt) {
@@ -460,6 +546,22 @@ void BoxApp::OnMouseMove(WPARAM btnState, int x, int y) {
 	mLastMousePos.y = y;
 }
 
+void BoxApp::DrawShadowMap() {
+	mCommandList->RSSetViewports(1, get_rvalue_ptr(mShadowMap->Viewport()));
+	mCommandList->RSSetScissorRects(1, get_rvalue_ptr(mShadowMap->ScissorRect()));
+	mCommandList->ResourceBarrier(1, get_rvalue_ptr(CD3DX12_RESOURCE_BARRIER::Transition(mShadowMap->Resource(), 
+		D3D12_RESOURCE_STATE_GENERIC_READ, D3D12_RESOURCE_STATE_DEPTH_WRITE)));
+	UINT passCBByteSize = d3dUtil::CalcConstantBufferByteSize(sizeof(PassConstants));
+	mCommandList->ClearDepthStencilView(mShadowMap->Dsv(), D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL, 1.0f, 0, 0, nullptr);
+	mCommandList->OMSetRenderTargets(0, nullptr, false, get_rvalue_ptr(mShadowMap->Dsv())); //DSV句柄
+	auto passCB = mCurrFrameResources->PassCB->Resource();
+	D3D12_GPU_VIRTUAL_ADDRESS passCBAddress = passCB->GetGPUVirtualAddress() + 1 * passCBByteSize;
+	mCommandList->SetGraphicsRootConstantBufferView(3, passCBAddress);
+	mCommandList->SetPipelineState(mPSOs["ShadowOpaque"].Get());
+	DrawInstanceRenderItems(mCommandList.Get(), mRitemLayer[(int)RenderLayer::Opaque]);
+	mCommandList->ResourceBarrier(1, get_rvalue_ptr(CD3DX12_RESOURCE_BARRIER::Transition(mShadowMap->Resource(), D3D12_RESOURCE_STATE_DEPTH_WRITE, D3D12_RESOURCE_STATE_GENERIC_READ)));
+}
+
 void BoxApp::Draw(const GameTimer &gt) {
 	auto cmdListAlloc = mCurrFrameResources->CmdListAlloc;
 	ThrowIfFailed(cmdListAlloc->Reset());
@@ -483,16 +585,7 @@ void BoxApp::Draw(const GameTimer &gt) {
 	ImGui::Render();
 #endif
 
-	mCommandList->RSSetViewports(1, &mScreenViewport);
-	mCommandList->RSSetScissorRects(1, &mScissorRect);
-
-	mCommandList->ResourceBarrier(1, get_rvalue_ptr(CD3DX12_RESOURCE_BARRIER::Transition(CurrentBackBuffer(), D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET)));
-	mCommandList->ClearRenderTargetView(CurrentBackBufferView(), (float *)&mMainPassCB.FogColor, 0, nullptr);
-
-	// mCommandList->ClearRenderTargetView(CurrentBackBufferView(), Colors::LightSteelBlue, 0, nullptr);
-	mCommandList->ClearDepthStencilView(DepthStencilView(), D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL, 1.0f, 0, 0, nullptr);
-
-	mCommandList->OMSetRenderTargets(1, get_rvalue_ptr(CurrentBackBufferView()), true, get_rvalue_ptr(DepthStencilView()));
+	
 
 // 	ID3D12DescriptorHeap *descriptorHeaps1[] = { mCbvHeap.Get() };
 // 	mCommandList->SetDescriptorHeaps(_countof(descriptorHeaps1), descriptorHeaps1);
@@ -512,9 +605,21 @@ void BoxApp::Draw(const GameTimer &gt) {
 	mCommandList->SetGraphicsRootShaderResourceView(2, //根参数索引
 			matSB->GetGPUVirtualAddress()); //子资源地址 
 #endif
+	
+	DrawShadowMap();
+
+	mCommandList->RSSetViewports(1, &mScreenViewport);
+	mCommandList->RSSetScissorRects(1, &mScissorRect);
+
+	mCommandList->ResourceBarrier(1, get_rvalue_ptr(CD3DX12_RESOURCE_BARRIER::Transition(CurrentBackBuffer(), D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET)));
+	mCommandList->ClearRenderTargetView(CurrentBackBufferView(), (float *)&mMainPassCB.FogColor, 0, nullptr);
+	mCommandList->ClearDepthStencilView(DepthStencilView(), D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL, 1.0f, 0, 0, nullptr);
+
+	mCommandList->OMSetRenderTargets(1, get_rvalue_ptr(CurrentBackBufferView()), true, get_rvalue_ptr(DepthStencilView()));
+	
 	auto passCB = mCurrFrameResources->PassCB->Resource();
 	mCommandList->SetGraphicsRootConstantBufferView(3, passCB->GetGPUVirtualAddress());
-
+	mCommandList->SetPipelineState(mPSOs["opaque"].Get());
 	#ifdef INSTANCE_RENDER
 	DrawInstanceRenderItems(mCommandList.Get(), mRitemLayer[static_cast<int>(RenderLayer::Opaque)]);
 
@@ -570,6 +675,7 @@ void BoxApp::Draw(const GameTimer &gt) {
 	// mCommandList->CopyResource(CurrentBackBuffer(), mBlurFilter->Output());
 	// mCommandList->ResourceBarrier(1, get_rvalue_ptr(CD3DX12_RESOURCE_BARRIER::Transition(CurrentBackBuffer(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_RENDER_TARGET)));
 	mCommandList->ResourceBarrier(1, get_rvalue_ptr(CD3DX12_RESOURCE_BARRIER::Transition(CurrentBackBuffer(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT)));
+	
 	ThrowIfFailed(mCommandList->Close());
 
 	ID3D12CommandList *cmdsLists[] = { mCommandList.Get() };
@@ -800,10 +906,22 @@ void BoxApp::BuildDescriptorHeaps() {
 	md3dDevice->CreateShaderResourceView(skyTex.Get(), &srvDesc, hDescriptor);
 	mSkyTexHeapIndex = 9;
 
+	auto srvCpuStart = mSrvHeap->GetCPUDescriptorHandleForHeapStart();
+	auto srvGpuStart = mSrvHeap->GetGPUDescriptorHandleForHeapStart();
+	auto dsvCpuStart = mDsvHeap->GetCPUDescriptorHandleForHeapStart();
+	hDescriptor.Offset(1, mCbvSrvDescriptorSize);
+	mShadowMap->BuildDescriptors(
+			CD3DX12_CPU_DESCRIPTOR_HANDLE(srvCpuStart, mShadowMapHeapIndex, mCbvSrvUavDescriptorSize),
+			CD3DX12_GPU_DESCRIPTOR_HANDLE(srvGpuStart, mShadowMapHeapIndex, mCbvSrvUavDescriptorSize),
+			CD3DX12_CPU_DESCRIPTOR_HANDLE(dsvCpuStart, 1, mDsvDescriptorSize));
+	mShadowMapHeapIndex = mSkyTexHeapIndex + 1;
+
+	
 	mBlurFilter->BuildDescriptors(
-			CD3DX12_CPU_DESCRIPTOR_HANDLE(mSrvHeap->GetCPUDescriptorHandleForHeapStart(), 10, mCbvSrvUavDescriptorSize), // 8 is Textures Desc Count
-			CD3DX12_GPU_DESCRIPTOR_HANDLE(mSrvHeap->GetGPUDescriptorHandleForHeapStart(), 10, mCbvSrvUavDescriptorSize),
+			CD3DX12_CPU_DESCRIPTOR_HANDLE(mSrvHeap->GetCPUDescriptorHandleForHeapStart(), 11, mCbvSrvUavDescriptorSize),
+			CD3DX12_GPU_DESCRIPTOR_HANDLE(mSrvHeap->GetGPUDescriptorHandleForHeapStart(), 11, mCbvSrvUavDescriptorSize),
 			mCbvSrvUavDescriptorSize);
+	
 }
 
 // 改的还是 cbvHeap,每个帧资源中的每一个物体都需要一个对应的CBV描述符,将物体的常量缓冲区地址和偏移后的句柄绑定,	在描述符堆中的句柄按照字节偏移 (frameIndex * objCount + i) * mCbvSrvUavDescriptorSize  物体的常量缓存地址按照字节偏移 i * sizeof(ObjectConstants)
@@ -1145,6 +1263,8 @@ void BoxApp::BuildShadersAndInputLayout() {
 	mShaders["treeSpritePS"] = d3dUtil::CompileShader(L"../../Shaders\\TreeSprite.hlsl", alphaTestDefines, "PS", "ps_5_0");
 	mShaders["horzBlurCS"] = d3dUtil::CompileShader(L"../../Shaders\\Blur.hlsl", nullptr, "HorzBlurCS", "cs_5_0");
 	mShaders["vertBlurCS"] = d3dUtil::CompileShader(L"../../Shaders\\Blur.hlsl", nullptr, "VertBlurCS", "cs_5_0");
+	mShaders["shadowVS"] = d3dUtil::CompileShader(L"../../Shaders\\Shadow.hlsl", nullptr, "VS", "vs_5_1");
+	mShaders["shadowOpaquePS"] = d3dUtil::CompileShader(L"../../Shaders\\Shadow.hlsl", nullptr, "PS", "ps_5_1");
 	// mShaders["wavesUpdateCS"] = d3dUtil::CompileShader(L"Shaders\\WaveSim.hlsl", nullptr, "UpdateWavesCS", "cs_5_0");
 	mShaders["SkyVS"] = d3dUtil::CompileShader(L"../../Shaders\\Sky.hlsl", nullptr, "VS", "vs_5_1");
 	mShaders["SkyPS"] = d3dUtil::CompileShader(L"../../Shaders\\Sky.hlsl", nullptr, "PS", "ps_5_1");
@@ -1194,7 +1314,7 @@ void BoxApp::BuildPSO() {
 
 			// PSO for opaque wireframe objects
 
-			D3D12_GRAPHICS_PIPELINE_STATE_DESC opaqueWireframePsoDesc = opaquePsoDesc;
+	D3D12_GRAPHICS_PIPELINE_STATE_DESC opaqueWireframePsoDesc = opaquePsoDesc;
 	opaqueWireframePsoDesc.RasterizerState.FillMode = D3D12_FILL_MODE_WIREFRAME;
 	ThrowIfFailed(md3dDevice->CreateGraphicsPipelineState(&opaqueWireframePsoDesc, IID_PPV_ARGS(&mPSOs["opaque_wireframe"])))
 
@@ -1296,6 +1416,26 @@ void BoxApp::BuildPSO() {
 	shadowPsoDesc.DepthStencilState = shadowDSS;
 	ThrowIfFailed(md3dDevice->CreateGraphicsPipelineState(&shadowPsoDesc, IID_PPV_ARGS(&mPSOs["shadow"])));
 
+
+	D3D12_GRAPHICS_PIPELINE_STATE_DESC smapPsoDesc = opaquePsoDesc;
+	smapPsoDesc.RasterizerState.DepthBias = 100000;
+	smapPsoDesc.RasterizerState.DepthBiasClamp = 0.0f;
+	smapPsoDesc.RasterizerState.SlopeScaledDepthBias = 1.0f;
+	smapPsoDesc.pRootSignature = mRootSignature.Get();
+	smapPsoDesc.VS = {
+		reinterpret_cast<BYTE *>(mShaders["shadowVS"]->GetBufferPointer()),
+		mShaders["shadowVS"]->GetBufferSize()
+	};
+	smapPsoDesc.PS = {
+		reinterpret_cast<BYTE *>(mShaders["shadowOpaquePS"]->GetBufferPointer()),
+		mShaders["shadowOpaquePS"]->GetBufferSize()
+	};
+
+	// Shadow map pass does not have a render target.
+	smapPsoDesc.RTVFormats[0] = DXGI_FORMAT_UNKNOWN;
+	smapPsoDesc.NumRenderTargets = 0;
+	ThrowIfFailed(md3dDevice->CreateGraphicsPipelineState(&smapPsoDesc, IID_PPV_ARGS(&mPSOs["ShadowOpaque"])));
+
 	auto x = mShaders.find("treeSpriteVS");
 
 	// D3D12_GRAPHICS_PIPELINE_STATE_DESC treeSpritePsoDesc = opaquePsoDesc;
@@ -1359,7 +1499,7 @@ void BoxApp::BuildPSO() {
 void BoxApp::BuildFrameResources() {
 	for (int i = 0; i < gNumFrameResources; ++i) {
 		#ifdef INSTANCE_RENDER
-		mFrameResources.push_back(std::make_unique<FrameResource>(md3dDevice.Get(), 1, static_cast<UINT>(mAllRitems.size()), (UINT)mMaterials.size(), mWaves->VertexCount()));
+		mFrameResources.push_back(std::make_unique<FrameResource>(md3dDevice.Get(), 2, static_cast<UINT>(mAllRitems.size()), (UINT)mMaterials.size(), mWaves->VertexCount()));
 		#else
 		mFrameResources.push_back(std::make_unique<FrameResource>(md3dDevice.Get(), 2, static_cast<UINT>(mAllRitems.size()), mMaterials.size(), mWaves->VertexCount()));
 		#endif

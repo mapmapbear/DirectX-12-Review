@@ -6,6 +6,7 @@
 #include "Waves.h"
 #include "BlurFilter.h"
 #include "Camera.h"
+#include "ShadowMap.h"
 
 using Microsoft::WRL::ComPtr;
 using namespace DirectX;
@@ -66,11 +67,13 @@ private:
 	void UpdateObjectCBs(const GameTimer& gt);
 	void UpdateInstanceData(const GameTimer &gt);
 	void UpdateMainPassCB(const GameTimer &gt);
+	void UpdateShadowTransform(const GameTimer &gt);
 	void UpdateReflectedPassCB(const GameTimer &gt);
 	void UpdateCamera(const GameTimer& gt);
 	void UpdateWaves(const GameTimer &gt);
 	void OnKeyboardInput(const GameTimer &gt);
 	void UpdateMaterialCBs(const GameTimer &gt);
+	void UpdateShadowPassCB(const GameTimer &gt);
 	virtual void Draw(const GameTimer& gt) override;
 	void DrawRenderItems(ID3D12GraphicsCommandList* cmdList, const std::vector<RenderItem*>& ritems);
 
@@ -81,6 +84,8 @@ private:
 	virtual void OnMouseDown(WPARAM btnState, int x, int y) override;
 	virtual void OnMouseUp(WPARAM btnState, int x, int y) override;
 	virtual void OnMouseMove(WPARAM btnState, int x, int y) override;
+
+	void DrawShadowMap();
 
 	void BuildDescriptorHeaps(); // 创建常量缓冲区描述符堆,为 mCbvHeap 赋值, RTV,DSV 描述符堆已在基类初始化
 	void BuildConstantBufferViews();
@@ -121,7 +126,7 @@ private:
 	std::unique_ptr<UploadBuffer<ObjectConstants>> mObjectCB = nullptr; // 常量缓冲区, Update 中,每帧更新变换矩阵
 	std::unique_ptr<UploadBuffer<PassConstants>> mPassCB = nullptr;
 
-
+	std::unique_ptr<ShadowMap> mShadowMap;
 	std::unique_ptr<MeshGeometry> mBoxGeo = nullptr;
 	std::unique_ptr<BlurFilter> mBlurFilter;
 
@@ -134,8 +139,6 @@ private:
 	ComPtr<ID3D12PipelineState> mPSO = nullptr; // 流水线状态对象,整合了 mRootSignature, mInputLayout, mvsByteCode, mpsByteCode
 
 	XMFLOAT4X4 mWorld = MathHelper::Identity4x4();
-	// XMFLOAT4X4 mView = MathHelper::Identity4x4();
-	// XMFLOAT4X4 mProj = MathHelper::Identity4x4();
 
 	std::vector<std::unique_ptr<FrameResource>> mFrameResources;
 	FrameResource* mCurrFrameResources = nullptr;
@@ -153,6 +156,7 @@ private:
 
 	PassConstants mMainPassCB;
 	PassConstants mReflectedPassCB;
+	PassConstants mShadowPassCB;
 
 	XMFLOAT3 mEyePos = { 0.0f, 0.0f, 0.0f };
 
@@ -188,6 +192,22 @@ private:
 	bool mFrustumCullingEnabled = true;
 
 	UINT mSkyTexHeapIndex = 0;
+	UINT mShadowMapHeapIndex = 0;
+
+	XMFLOAT3 mLightPosW;
+	XMFLOAT4X4 mLightView = MathHelper::Identity4x4();
+	XMFLOAT4X4 mLightProj = MathHelper::Identity4x4();
+	XMFLOAT4X4 mShadowTransform = MathHelper::Identity4x4();
+	float mLightRotationAngle = 0.0f;
+	XMFLOAT3 mBaseLightDirections[3] = {
+		XMFLOAT3(0.57735f, -0.57735f, 0.57735f),
+		XMFLOAT3(-0.57735f, -0.57735f, 0.57735f),
+		XMFLOAT3(0.0f, -0.707f, -0.707f)
+	};
+	XMFLOAT3 mRotatedLightDirections[3];
+	float mLightNearZ = 0.0f;
+	float mLightFarZ = 0.0f;
+	DirectX::BoundingSphere mSceneBounds;
 
 	UINT posState;
 	UINT gColorState;
