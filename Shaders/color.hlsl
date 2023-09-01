@@ -28,7 +28,8 @@ struct VertexOut {
 	// SV: System Value, 它所修饰的顶点着色器输出元素存有齐次裁剪空间中的顶点位置信息
 	// 必须为输出位置信息的参数附上 SV_POSITION 语义
 	float4 PosH : SV_POSITION;
-	float3 PosW : POSITION;
+    float4 ShadowPosH : POSITION0;
+	float3 PosW : POSITION1;
 	float3 NormalW : NORMAL;
 	float2 UV0 : TEXCOORD;
     float3 TangentW : TANGENT;
@@ -71,6 +72,7 @@ VertexOut VS(VertexIn vin) {
     float4 UV = mul(float4(vin.UV0, 0.0f, 1.0f), texTransform);
 	vout.UV0 = mul(UV, gMatCBPass.gMatTransform).xy;
 #endif
+    vout.ShadowPosH = mul(posW, gCBPass.gShadowTransform);
 	return vout;
 }
 
@@ -105,10 +107,11 @@ float4 PS(VertexOut pin) : SV_Target
 	
     Material mat = { diffuseAlbedo, fresnelR0, roughness };
     float3 shadowFactor = 1.0f;//暂时使用1.0，不对计算产生影响
+	shadowFactor[0] = CalcShadowFactor(pin.ShadowPosH);
     float4 directLight = ComputeLighting(gCBPass.gLights, mat, pin.PosW, worldNormal, worldView, shadowFactor);
     float4 ambient = gCBPass.gAmbientLight * diffuseAlbedo;
     float4 diffuse = directLight * diffuseAlbedo;
-    float4 finalCol = ambient + diffuse;
+    float4 finalCol = ambient + directLight;
 	finalCol.rgb += (reflectionColor.rgb * fresnelFactor * smoothness);
     finalCol.a = diffuseAlbedo.a;
     return finalCol;

@@ -12,7 +12,9 @@ xmake version 2.7.8+HEAD.87dff1ef4
     <Filter Include="Properties">
       <UniqueIdentifier>{CC7C6180-942D-056E-3227-E6A2B3FB19CD}</UniqueIdentifier>
     </Filter>
-
+    <Filter Include="Shaders">
+      <UniqueIdentifier>{5d33f559-c4a2-4a34-af14-62fe9b19e5a5}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <None Include="$(MSBuildProjectDirectory)\Xmake.Custom.props">
@@ -32,61 +34,101 @@ xmake version 2.7.8+HEAD.87dff1ef4
     </None>
   </ItemGroup>
   <ItemGroup>
-
-
-  </ItemGroup>
-  <ItemGroup>
-
     <ClCompile Include="$(XmakeProjectDir)\src\BlurFilter.cpp">
-      <Filter><!-- nil --></Filter>
+      <Filter>
+        <!-- nil -->
+      </Filter>
     </ClCompile>
     <ClCompile Include="$(XmakeProjectDir)\src\BoxApp.cpp">
-      <Filter><!-- nil --></Filter>
+      <Filter>
+        <!-- nil -->
+      </Filter>
     </ClCompile>
     <ClCompile Include="$(XmakeProjectDir)\src\Camera.cpp">
-      <Filter><!-- nil --></Filter>
+      <Filter>
+        <!-- nil -->
+      </Filter>
     </ClCompile>
     <ClCompile Include="$(XmakeProjectDir)\src\DDSTextureLoader.cpp">
-      <Filter><!-- nil --></Filter>
+      <Filter>
+        <!-- nil -->
+      </Filter>
     </ClCompile>
     <ClCompile Include="$(XmakeProjectDir)\src\FreamResource.cpp">
-      <Filter><!-- nil --></Filter>
+      <Filter>
+        <!-- nil -->
+      </Filter>
     </ClCompile>
     <ClCompile Include="$(XmakeProjectDir)\src\GameTimer.cpp">
-      <Filter><!-- nil --></Filter>
+      <Filter>
+        <!-- nil -->
+      </Filter>
     </ClCompile>
     <ClCompile Include="$(XmakeProjectDir)\src\GeometryGenerator.cpp">
-      <Filter><!-- nil --></Filter>
+      <Filter>
+        <!-- nil -->
+      </Filter>
     </ClCompile>
     <ClCompile Include="$(XmakeProjectDir)\src\GpuWaves.cpp">
-      <Filter><!-- nil --></Filter>
+      <Filter>
+        <!-- nil -->
+      </Filter>
     </ClCompile>
     <ClCompile Include="$(XmakeProjectDir)\src\MathHelper.cpp">
-      <Filter><!-- nil --></Filter>
+      <Filter>
+        <!-- nil -->
+      </Filter>
+    </ClCompile>
+    <ClCompile Include="$(XmakeProjectDir)\src\ShadowMap.cpp">
+      <Filter>
+        <!-- nil -->
+      </Filter>
     </ClCompile>
     <ClCompile Include="$(XmakeProjectDir)\src\Waves.cpp">
-      <Filter><!-- nil --></Filter>
+      <Filter>
+        <!-- nil -->
+      </Filter>
     </ClCompile>
     <ClCompile Include="$(XmakeProjectDir)\src\d3dApp.cpp">
-      <Filter><!-- nil --></Filter>
+      <Filter>
+        <!-- nil -->
+      </Filter>
     </ClCompile>
     <ClCompile Include="$(XmakeProjectDir)\src\d3dUtil.cpp">
-      <Filter><!-- nil --></Filter>
+      <Filter>
+        <!-- nil -->
+      </Filter>
     </ClCompile>
     <ClCompile Include="$(XmakeProjectDir)\src\main.cpp">
-      <Filter><!-- nil --></Filter>
+      <Filter>
+        <!-- nil -->
+      </Filter>
     </ClCompile>
-
-
-
   </ItemGroup>
   <ItemGroup>
-
+    <FxCompile Include="..\..\Shaders\Blur.hlsl">
+      <Filter>Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="..\..\Shaders\color.hlsl">
+      <Filter>Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="..\..\Shaders\Common.hlsl">
+      <Filter>Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="..\..\Shaders\LightingUtil.hlsl">
+      <Filter>Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="..\..\Shaders\Sky.hlsl">
+      <Filter>Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="..\..\Shaders\WaveSim.hlsl">
+      <Filter>Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="..\..\Shaders\Shadow.hlsl">
+      <Filter>Shaders</Filter>
+    </FxCompile>
   </ItemGroup>
   <ItemGroup>
-
-
   </ItemGroup>
-  <Import Condition="Exists('$(MSBuildThisFileDirectory)\Xmake.Custom.files.filters')"
-    Project="$(MSBuildThisFileDirectory)\Xmake.Custom.files.filters" />
+  <Import Condition="Exists('$(MSBuildThisFileDirectory)\Xmake.Custom.files.filters')" Project="$(MSBuildThisFileDirectory)\Xmake.Custom.files.filters" />
 </Project>

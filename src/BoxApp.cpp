@@ -619,6 +619,11 @@ void BoxApp::Draw(const GameTimer &gt) {
 	
 	auto passCB = mCurrFrameResources->PassCB->Resource();
 	mCommandList->SetGraphicsRootConstantBufferView(3, passCB->GetGPUVirtualAddress());
+
+	CD3DX12_GPU_DESCRIPTOR_HANDLE shadowTexDescriptor(mSrvHeap->GetGPUDescriptorHandleForHeapStart());
+	shadowTexDescriptor.Offset(mShadowMapHeapIndex, mCbvSrvDescriptorSize);
+	mCommandList->SetGraphicsRootDescriptorTable(5, shadowTexDescriptor);
+
 	mCommandList->SetPipelineState(mPSOs["opaque"].Get());
 	#ifdef INSTANCE_RENDER
 	DrawInstanceRenderItems(mCommandList.Get(), mRitemLayer[static_cast<int>(RenderLayer::Opaque)]);
@@ -910,11 +915,11 @@ void BoxApp::BuildDescriptorHeaps() {
 	auto srvGpuStart = mSrvHeap->GetGPUDescriptorHandleForHeapStart();
 	auto dsvCpuStart = mDsvHeap->GetCPUDescriptorHandleForHeapStart();
 	hDescriptor.Offset(1, mCbvSrvDescriptorSize);
+	mShadowMapHeapIndex = mSkyTexHeapIndex + 1;
 	mShadowMap->BuildDescriptors(
 			CD3DX12_CPU_DESCRIPTOR_HANDLE(srvCpuStart, mShadowMapHeapIndex, mCbvSrvUavDescriptorSize),
 			CD3DX12_GPU_DESCRIPTOR_HANDLE(srvGpuStart, mShadowMapHeapIndex, mCbvSrvUavDescriptorSize),
 			CD3DX12_CPU_DESCRIPTOR_HANDLE(dsvCpuStart, 1, mDsvDescriptorSize));
-	mShadowMapHeapIndex = mSkyTexHeapIndex + 1;
 
 	
 	mBlurFilter->BuildDescriptors(
@@ -1029,7 +1034,7 @@ void BoxApp::BuildConstantBuffers() {
 			mCbvHeap->GetCPUDescriptorHandleForHeapStart());
 }
 
-std::array<const CD3DX12_STATIC_SAMPLER_DESC, 6> BoxApp::GetStaticSamplers() {
+std::array<const CD3DX12_STATIC_SAMPLER_DESC, 7> BoxApp::GetStaticSamplers() {
 	// 应用程序一般只会用到这些采样器的一部分
 	// 所以就将它们全部提前定义好,并作为根签名的一部分保留下来
 
@@ -1079,10 +1084,21 @@ std::array<const CD3DX12_STATIC_SAMPLER_DESC, 6> BoxApp::GetStaticSamplers() {
 			0.0f, // mipLODBias
 			8); // maxAnisotropy
 
+	const CD3DX12_STATIC_SAMPLER_DESC shadow(
+			6, // shaderRegister
+			D3D12_FILTER_COMPARISON_MIN_MAG_LINEAR_MIP_POINT, // filter
+			D3D12_TEXTURE_ADDRESS_MODE_BORDER, // addressU
+			D3D12_TEXTURE_ADDRESS_MODE_BORDER, // addressV
+			D3D12_TEXTURE_ADDRESS_MODE_BORDER, // addressW
+			0.0f, // mipLODBias
+			16, // maxAnisotropy
+			D3D12_COMPARISON_FUNC_LESS_EQUAL,
+			D3D12_STATIC_BORDER_COLOR_OPAQUE_BLACK);
+
 	return {
 		pointWrap, pointClamp,
 		linearWrap, linearClamp,
-		anisotropicWrap, anisotropicClamp
+		anisotropicWrap, anisotropicClamp, shadow
 	};
 }
 
@@ -1101,38 +1117,28 @@ std::array<const CD3DX12_STATIC_SAMPLER_DESC, 1> BoxApp::GetStaticSamplers1() {
 }
 
 void BoxApp::BuildRootSignature() {
-#ifdef DYNAMIC_RESOURCES
+
 	CD3DX12_DESCRIPTOR_RANGE srvTable;
 	srvTable.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 10, 2);
 
 	CD3DX12_DESCRIPTOR_RANGE srvTable1;
 	srvTable1.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);
 	
-	CD3DX12_ROOT_PARAMETER slotRootParameter[5];
+	CD3DX12_DESCRIPTOR_RANGE srvTable2;
+	srvTable2.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 12);
+
+	CD3DX12_ROOT_PARAMETER slotRootParameter[6];
 	slotRootParameter[0].InitAsDescriptorTable(1, &srvTable1, D3D12_SHADER_VISIBILITY_PIXEL);
 	slotRootParameter[1].InitAsShaderResourceView(0, 1);
 	slotRootParameter[2].InitAsShaderResourceView(1, 1);
 	slotRootParameter[3].InitAsConstantBufferView(0);
 	slotRootParameter[4].InitAsDescriptorTable(1, &srvTable, D3D12_SHADER_VISIBILITY_PIXEL);
-
-
-#else
-	CD3DX12_DESCRIPTOR_RANGE texTable;
-	texTable.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0); // register t0
-
-	CD3DX12_ROOT_PARAMETER slotRootParameter[4];
-
-	slotRootParameter[0].InitAsDescriptorTable(1, &texTable, D3D12_SHADER_VISIBILITY_PIXEL);
-	slotRootParameter[1].InitAsConstantBufferView(0); // register b0
-	slotRootParameter[2].InitAsConstantBufferView(1); // register b1
-	slotRootParameter[3].InitAsConstantBufferView(2); // register b2
-#endif
-	
+	slotRootParameter[5].InitAsDescriptorTable(1, &srvTable2, D3D12_SHADER_VISIBILITY_PIXEL);
 
 	auto staticSamplers = GetStaticSamplers(); // register s0 ~ s6
 
 	// 根签名是根参数数组
-	CD3DX12_ROOT_SIGNATURE_DESC rootSigDesc(5, slotRootParameter,
+	CD3DX12_ROOT_SIGNATURE_DESC rootSigDesc(6, slotRootParameter,
 			(staticSamplers.size()), staticSamplers.data(),
 			D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
 
